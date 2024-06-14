@@ -16,18 +16,18 @@ import random
 # set_seed() and seed_worker()
 def set_seed(seed=None, seed_torch=True):
 	"""
-    Function that controls randomness. NumPy and random modules must be imported.
+	Function that controls randomness. NumPy and random modules must be imported.
   
-    Args:
-      seed : Integer
-        A non-negative integer that defines the random state. Default is `None`.
-      seed_torch : Boolean
-        If `True` sets the random seed for pytorch tensors, so pytorch module
-        must be imported. Default is `True`.
+	Args:
+	  seed : Integer
+		A non-negative integer that defines the random state. Default is `None`.
+	  seed_torch : Boolean
+		If `True` sets the random seed for pytorch tensors, so pytorch module
+		must be imported. Default is `True`.
   
-    Returns:
-      Nothing.
-    """
+	Returns:
+	  Nothing.
+	"""
 	if seed is None:
 		seed = np.random.choice(2 ** 32)
 	random.seed(seed)
@@ -44,18 +44,18 @@ def set_seed(seed=None, seed_torch=True):
 # In case that `DataLoader` is used
 def seed_worker(worker_id):
 	"""
-    DataLoader will reseed workers following randomness in
-    multi-process data loading algorithm.
+	DataLoader will reseed workers following randomness in
+	multi-process data loading algorithm.
   
-    Args:
-      worker_id: integer
-        ID of subprocess to seed. 0 means that
-        the data will be loaded in the main process
-        Refer: https://pytorch.org/docs/stable/data.html#data-loading-randomness for more details
+	Args:
+	  worker_id: integer
+		ID of subprocess to seed. 0 means that
+		the data will be loaded in the main process
+		Refer: https://pytorch.org/docs/stable/data.html#data-loading-randomness for more details
   
-    Returns:
-      Nothing
-    """
+	Returns:
+	  Nothing
+	"""
 	worker_seed = torch.initial_seed() % 2**32
 	np.random.seed(worker_seed)
 	random.seed(worker_seed)
@@ -63,48 +63,41 @@ def seed_worker(worker_id):
 # set_device() to CPU or GPU
 def set_device():
 	"""
-    Set the device. CUDA if available, CPU otherwise
+	Set the device. CUDA if available, CPU otherwise
   
-    Args:
-      None
+	Args:
+	  None
   
-    Returns:
-      Nothing
-    """
+	Returns:
+	  Nothing
+	"""
 	device = "cuda" if torch.cuda.is_available() else "cpu"
 	if device != "cuda":
-		print("GPU is not enabled in this notebook. \n"
-		      "If you want to enable it, in the menu under `Runtime` -> \n"
-		      "`Hardware accelerator.` and select `GPU` from the dropdown menu")
+		print("GPU is not enabled in this notebook")
 	else:
-		print("GPU is enabled in this notebook. \n"
-		      "If you want to disable it, in the menu under `Runtime` -> \n"
-		      "`Hardware accelerator.` and select `None` from the dropdown menu")
+		print("GPU is enabled in this notebook")
 
 	return device
-
-def initialize_plotting():
-    plt.ion()
 
 # Create spiral dataset
 def create_spiral_dataset(K, sigma, N):
 	"""
-    Function to simulate spiral dataset
+	Function to simulate spiral dataset
   
-    Args:
-      K: int
-        Number of classes
-      sigma: float
-        Standard deviation
-      N: int
-        Number of data points
+	Args:
+	  K: int
+		Number of classes
+	  sigma: float
+		Standard deviation
+	  N: int
+		Number of data points
   
-    Returns:
-      X: torch.tensor
-        Spiral data
-      y: torch.tensor
-        Corresponding ground truth
-    """
+	Returns:
+	  X: torch.tensor
+		Spiral data
+	  y: torch.tensor
+		Corresponding ground truth
+	"""
 
 	# Initialize t, X, y
 	t = torch.linspace(0, 1, N)
@@ -122,26 +115,26 @@ def create_spiral_dataset(K, sigma, N):
 # Net class
 class Net(nn.Module):
 	"""
-    Simulate MLP Network
-    """
+	Simulate MLP Network
+	"""
 
 	def __init__(self, actv, input_feature_num, hidden_unit_nums, output_feature_num, use_bias=True, learn_bias=True):
 		"""
-        Initialize MLP Network parameters
-    
-        Args:
-          actv: string
-            Activation function
-          input_feature_num: int
-            Number of input features
-          hidden_unit_nums: list
-            Number of units per hidden layer. List of integers
-          output_feature_num: int
-            Number of output features
-    
-        Returns:
-          Nothing
-        """
+		Initialize MLP Network parameters
+	
+		Args:
+		  actv: string
+			Activation function
+		  input_feature_num: int
+			Number of input features
+		  hidden_unit_nums: list
+			Number of units per hidden layer. List of integers
+		  output_feature_num: int
+			Number of output features
+	
+		Returns:
+		  Nothing
+		"""
 		super(Net, self).__init__()
 		self.input_feature_num = input_feature_num # Save the input size for reshaping later
 		self.hidden_unit_nums = hidden_unit_nums
@@ -188,16 +181,16 @@ class Net(nn.Module):
 
 	def forward(self, x):
 		"""
-        Simulate forward pass of MLP Network
-    
-        Args:
-          x: torch.tensor
-            Input data
-    
-        Returns:
-          logits: Instance of MLP
-            Forward pass of MLP
-        """
+		Simulate forward pass of MLP Network
+	
+		Args:
+		  x: torch.tensor
+			Input data
+	
+		Returns:
+		  logits: Instance of MLP
+			Forward pass of MLP
+		"""
 		
 		self.hidden_states = []  # Clear previous hidden outputs
 		self.hidden_outputs = []
@@ -221,20 +214,20 @@ class Net(nn.Module):
 	
 	def test(self, data_loader, device='cpu'):
 		"""
-        Function to gauge network performance
-    
-        Args:
-          data_loader: torch.utils.data type
-            Combines the test dataset and sampler, and provides an iterable over the given dataset.
+		Function to gauge network performance
+	
+		Args:
+		  data_loader: torch.utils.data type
+			Combines the test dataset and sampler, and provides an iterable over the given dataset.
 		  device: string
-            CUDA/GPU if available, CPU otherwise
-    
-        Returns:
-          acc: float
-            Performance of the network
-          total: int
-            Number of datapoints in the dataloader
-        """
+			CUDA/GPU if available, CPU otherwise
+	
+		Returns:
+		  acc: float
+			Performance of the network
+		  total: int
+			Number of datapoints in the dataloader
+		"""
 		correct = 0
 		total = 0
 		for data in data_loader:
@@ -256,21 +249,21 @@ class Net(nn.Module):
 	
 		Args:
 		  criterion: torch.nn type
-		    Loss function
+			Loss function
 		  optimizer: torch.optim type
-		    Implements Adam or MSELoss algorithm.
+			Implements Adam or MSELoss algorithm.
 		  train_loader: torch.utils.data type
-		    Combines the train dataset and sampler, and provides an iterable over the given dataset.
+			Combines the train dataset and sampler, and provides an iterable over the given dataset.
 		  test_loader: torch.utils.data type
-		    Combines the test dataset and sampler, and provides an iterable over the given dataset.
+			Combines the test dataset and sampler, and provides an iterable over the given dataset.
 		  num_epochs: int
-		    Number of epochs [default: 1]
+			Number of epochs [default: 1]
 		  verbose: boolean
-		    If True, print statistics
+			If True, print statistics
 		  training_plot=False
-		    If True, display training plot
+			If True, display training plot
 		  device: string
-		    CUDA/GPU if available, CPU otherwise
+			CUDA/GPU if available, CPU otherwise
 	
 		Returns:
 		  Nothing
@@ -357,11 +350,11 @@ class Net(nn.Module):
 
 		Args:
 		  test_loader: torch.utils.data type
-		    Combines the test dataset and sampler, and provides an iterable over the given dataset.
+			Combines the test dataset and sampler, and provides an iterable over the given dataset.
 		  verbose: boolean
-		    If True, print statistics
+			If True, print statistics
 		  device: string
-		    CUDA/GPU if available, CPU otherwise
+			CUDA/GPU if available, CPU otherwise
 
 		Returns:
 		  Nothing
@@ -374,15 +367,15 @@ class Net(nn.Module):
 		
 		return test_acc
 	
-	def display_summary(self, test_loader, test_acc):
+	def display_summary(self, test_loader, test_acc, title=None):
 		'''
 		Display network summary
 
 		Args:
 		  test_loader: torch.utils.data type
-		    Combines the test dataset and sampler, and provides an iterable over the given dataset.
+			Combines the test dataset and sampler, and provides an iterable over the given dataset.
 		  device: string
-		    CUDA/GPU if available, CPU otherwise
+			CUDA/GPU if available, CPU otherwise
 
 		Returns:
 		  Nothing
@@ -411,7 +404,7 @@ class Net(nn.Module):
 			indexesO = torch.where(labels == labelO)
 			class_averaged_output[labelO,:] = torch.mean(self.processed_output[indexesO], dim=0)
 			
-		fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(15, 10))
+		fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(8, 6))
 
 		for i, (class_averaged_hidden, sorted_indices) in enumerate(zip(class_averaged_hidden_layers, sorted_indices_layers)):
 			imH = axes[0][i].imshow(class_averaged_hidden[:,sorted_indices].T, aspect='auto', interpolation='none')
@@ -439,10 +432,12 @@ class Net(nn.Module):
 		axes[1][1].set_ylabel('Training Loss')
 		axes[1][1].legend(loc='best', frameon=False)
 
-		plt.tight_layout()
-		plt.show()
+		if title is not None:
+			fig.suptitle(title)
+		fig.tight_layout()
+		fig.show()
 
-	def plot_params(self):
+	def plot_params(self, title=None):
 		'''
 		Plot initial and final weights and biases for all layers.
 
@@ -454,7 +449,7 @@ class Net(nn.Module):
 		'''
 
 		num_layers = len(self.initial_weights)
-		fig, axes = plt.subplots(nrows=num_layers, ncols=2, figsize=(12, 3*num_layers))
+		fig, axes = plt.subplots(nrows=num_layers, ncols=2, figsize=(8, 2*num_layers))
 
 		for i, (initialW, finalW) in enumerate(zip(self.initial_weights, self.final_weights)):
 			iw = initialW.flatten()
@@ -469,7 +464,7 @@ class Net(nn.Module):
 
 			axes[i][0].set_xlabel("Weight Value")
 			axes[i][0].set_ylabel("Frequency")
-			axes[i][0].legend()
+		axes[0][0].legend()
 
 		if self.use_bias:
 			for i, (initialB, finalB) in enumerate(zip(self.initial_biases, self.final_biases)):
@@ -485,36 +480,38 @@ class Net(nn.Module):
 
 				axes[i][1].set_xlabel("Bias Value")
 				axes[i][1].set_ylabel("Frequency")
-				axes[i][1].legend()
+			axes[i][1].legend()
 		else:
 			axes[0][1].set_title('Biases are not used in this network')
-
-		plt.tight_layout()
-		plt.show()
+			
+		if title is not None:
+			fig.suptitle(title)
+		fig.tight_layout()
+		fig.show()
 		
 # Shuffle and split data; define X_test, y_test, X_train, y_train
 def shuffle_and_split_data(X, y, seed):
 	"""
-    Helper function to shuffle and split data
+	Helper function to shuffle and split data
   
-    Args:
-      X: torch.tensor
-        Input data
-      y: torch.tensor
-        Corresponding target variables
-      seed: int
-        Set seed for reproducibility
+	Args:
+	  X: torch.tensor
+		Input data
+	  y: torch.tensor
+		Corresponding target variables
+	  seed: int
+		Set seed for reproducibility
   
-    Returns:
-      X_test: torch.tensor
-        Test data [20% of X]
-      y_test: torch.tensor
-        Labels corresponding to above mentioned test data
-      X_train: torch.tensor
-        Train data [80% of X]
-      y_train: torch.tensor
-        Labels corresponding to above mentioned train data
-    """
+	Returns:
+	  X_test: torch.tensor
+		Test data [20% of X]
+	  y_test: torch.tensor
+		Labels corresponding to above mentioned test data
+	  X_train: torch.tensor
+		Train data [80% of X]
+	  y_train: torch.tensor
+		Labels corresponding to above mentioned train data
+	"""
 	# Set seed for reproducibility
 	torch.manual_seed(seed)
 	# Number of samples
@@ -533,54 +530,91 @@ def shuffle_and_split_data(X, y, seed):
 
 	return X_test, y_test, X_train, y_train
 
-# Graph of sorted spiral data
 def sample_grid(M=500, x_max=2.0):
 	"""
-    Helper function to simulate sample meshgrid
+	Helper function to simulate sample meshgrid
   
-    Args:
-      M: int
-        Size of the constructed tensor with meshgrid
-      x_max: float
-        Defines range for the set of points
+	Args:
+	  M: int
+		Size of the constructed tensor with meshgrid
+	  x_max: float
+		Defines range for the set of points
   
-    Returns:
-      X_all: torch.tensor
-        Concatenated meshgrid tensor
-    """
+	Returns:
+	  X_all: torch.tensor
+		Concatenated meshgrid tensor
+	"""
 	ii, jj = torch.meshgrid(torch.linspace(-x_max, x_max, M),
-	                        torch.linspace(-x_max, x_max, M),
-	                        indexing="ij")
+							torch.linspace(-x_max, x_max, M),
+							indexing="ij")
 	X_all = torch.cat([ii.unsqueeze(-1),
-	                   jj.unsqueeze(-1)],
-	                  dim=-1).view(-1, 2)
+					   jj.unsqueeze(-1)],
+					  dim=-1).view(-1, 2)
 	return X_all
 
+def generate_data(SEED, dataSplitSeed):
+	K = 4
+	sigma = 0.16
+	N = 1000
 
-def plot_decision_map(X_all, y_pred, X_test, y_test,
-                      M=500, x_max=2.0, eps=1e-3):
+	fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(8, 4))
+
+	# Spiral Data Set graph
+	X, y = create_spiral_dataset(K, sigma, N)
+	axes[0].scatter(X[:, 0], X[:, 1], c = y)
+	axes[0].set_xlabel('x1')
+	axes[0].set_ylabel('x2')
+	axes[0].set_title('All Data')
+
+	# Test Data Set graph
+	X_test, y_test, X_train, y_train = shuffle_and_split_data(X, y, seed=dataSplitSeed)
+	axes[1].scatter(X_test[:, 0], X_test[:, 1], c=y_test)
+	axes[1].set_xlabel('x1')
+	axes[1].set_ylabel('x2')
+	axes[1].set_title('Test data')
+
+	fig.tight_layout()
+	fig.show()
+
+	# Train and test DataLoaders
+	g_seed = torch.Generator()
+	g_seed.manual_seed(SEED)
+	batch_size = 1
+	test_data = TensorDataset(X_test, y_test)
+	test_loader = DataLoader(test_data, batch_size=len(test_data), shuffle=False, num_workers=0,
+							worker_init_fn=seed_worker, generator=g_seed)
+	train_data = TensorDataset(X_train, y_train)
+	train_loader = DataLoader(train_data, batch_size=batch_size, drop_last=True, shuffle=True, num_workers=0,
+							worker_init_fn=seed_worker, generator=g_seed)
+	
+	return K, X_test, y_test, X_train, y_train, test_loader, train_loader
+
+def plot_decision_map(net, DEVICE, X_test, y_test, K, title=None, M=500, x_max=2.0, eps=1e-3):
 	"""
-    Helper function to plot decision map
+	Helper function to plot decision map
   
-    Args:
-      X_all: torch.tensor
-        Concatenated meshgrid tensor
-      y_pred: torch.tensor
-        Labels predicted by the network
-      X_test: torch.tensor
-        Test data
-      y_test: torch.tensor
-        Labels of the test data
-      M: int
-        Size of the constructed tensor with meshgrid
-      x_max: float
-        Defines range for the set of points
-      eps: float
-        Decision threshold
+	Args:
+	  net: network object
+		Trained network
+	  DEVICE: cpu or gpu
+	  	Device type
+	  X_test: torch.tensor
+		Test data
+	  y_test: torch.tensor
+		Labels of the test data
+	  M: int
+		Size of the constructed tensor with meshgrid
+	  x_max: float
+		Defines range for the set of points
+	  eps: float
+		Decision threshold
   
-    Returns:
-      Nothing
-    """
+	Returns:
+	  Nothing
+	"""
+	X_all = sample_grid()
+	y_pred = net(X_all.to(DEVICE)).cpu()
+
 	decision_map = torch.argmax(y_pred, dim=1)
 
 	for i in range(len(X_test)):
@@ -588,108 +622,73 @@ def plot_decision_map(X_all, y_pred, X_test, y_test,
 		decision_map[indices] = (K + y_test[i]).long()
 
 	decision_map = decision_map.view(M, M)
+	fig = plt.figure()
 	plt.imshow(decision_map, extent=[-x_max, x_max, -x_max, x_max], cmap='jet')
 	plt.xlabel('x1')
 	plt.ylabel('x2')
+	plt.title(f'{title} Classified Spiral Data Set')
+	fig.show()
+
+def main():
+	SEED = 2021
+	data_split_seed = SEED
+	network_seed = SEED + 1
+	data_order_seed = SEED + 2
+	DEVICE = set_device()
+	g_seed = torch.Generator()
+
+	K, X_test, y_test, X_train, y_train, test_loader, train_loader = generate_data(SEED, data_split_seed)
+
+	# Train and Test model
+	set_seed(network_seed)
+	g_seed.manual_seed(data_order_seed)
+	net = Net(nn.ReLU, X_train.shape[1], [128, 32], K, use_bias=True, learn_bias=True).to(DEVICE)
+	criterion = "MSELoss"
+	optimizer = optim.SGD(net.parameters(), lr=0.09)
+	num_epochs = 2
+	net.train_model(criterion, optimizer, train_loader, num_epochs=num_epochs, device=DEVICE)
+	test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
+	net.display_summary(test_loader, test_acc, title='Learned bias')
+	net.plot_params(title='Learned bias')
+	plot_decision_map(net, DEVICE, X_test, y_test, K, title="Learned bias")	
+
+	criterion = "MSELoss"
+	num_epochs = 2
+
+	set_seed(network_seed)
+	g_seed.manual_seed(data_order_seed)
+	no_bias_net = Net(nn.ReLU, X_train.shape[1], [128, 32], K, use_bias=False, learn_bias=False).to(DEVICE)
+	optimizer = optim.SGD(no_bias_net.parameters(), lr=0.09)
+	no_bias_net.train_model(criterion, optimizer, train_loader, num_epochs=num_epochs, device=DEVICE)
+	no_bias_test_acc = no_bias_net.test_model(test_loader, verbose=False, device=DEVICE)
+	no_bias_net.display_summary(test_loader, no_bias_test_acc, title='Zero bias')
+	no_bias_net.plot_params(title='Zero bias')
+	plot_decision_map(no_bias_net, DEVICE, X_test, y_test, K, title="Zero bias")
+
+	set_seed(network_seed)
+	g_seed.manual_seed(data_order_seed)
+	fixed_bias_net = Net(nn.ReLU, X_train.shape[1], [128, 32], K, use_bias=True, learn_bias=False).to(DEVICE)
+	optimizer = optim.SGD(fixed_bias_net.parameters(), lr=0.09)
+	fixed_bias_net.train_model(criterion, optimizer, train_loader, num_epochs=num_epochs, device=DEVICE)
+	fixed_bias_test_acc = fixed_bias_net.test_model(test_loader, verbose=False, device=DEVICE)
+	fixed_bias_net.display_summary(test_loader, fixed_bias_test_acc, title='Fixed bias')
+	fixed_bias_net.plot_params(title='Fixed bias')
+	plot_decision_map(fixed_bias_net, DEVICE, X_test, y_test, K, title="Fixed bias")
+
+	chartLabels = ['Using Learned Biases', 'No Biases', 'Using Biases without Learning']
+	chartData = [test_acc, no_bias_test_acc, fixed_bias_test_acc]
+	fig = plt.figure()
+	bars = plt.bar(chartLabels, chartData, alpha=0.5)
+	plt.xlabel('Network Model')
+	plt.ylabel('Accuracy')
+	plt.title('Accuracy of the Network')
+	for bar in bars:
+		yval = bar.get_height()
+		plt.text(bar.get_x() + bar.get_width()/2.0, yval, round(yval, 2), va='bottom') 
+	fig.show()
+
+
 	plt.show()
 	
-
-SEED = 2021
-set_seed(seed=SEED)
-DEVICE = set_device()
-
-K = 4
-sigma = 0.16
-N = 1000
-
-fig = plt.figure() # to make graphs interactive!!!
-
-# Spiral Data Set graph
-X, y = create_spiral_dataset(K, sigma, N)
-plt.scatter(X[:, 0], X[:, 1], c = y)
-plt.xlabel('x1')
-plt.ylabel('x2')
-plt.show()
-
-# Training Data Set graph
-X_test, y_test, X_train, y_train = shuffle_and_split_data(X, y, seed=SEED)
-plt.figure()
-plt.scatter(X_test[:, 0], X_test[:, 1], c=y_test)
-plt.xlabel('x1')
-plt.ylabel('x2')
-plt.title('Test data')
-plt.show()
-
-# Train and test DataLoaders
-g_seed = torch.Generator()
-g_seed.manual_seed(SEED)
-
-batch_size = 1
-test_data = TensorDataset(X_test, y_test)
-test_loader = DataLoader(test_data, batch_size=len(test_data),
-                         shuffle=False, num_workers=0,
-                         worker_init_fn=seed_worker,
-                         generator=g_seed)
-
-train_data = TensorDataset(X_train, y_train)
-train_loader = DataLoader(train_data, batch_size=batch_size, drop_last=True,
-                          shuffle=True, num_workers=0,
-                          worker_init_fn=seed_worker,
-                          generator=g_seed)
-
-# Finding optimal learning rate
-# set_seed(SEED)
-# g_seed.manual_seed(SEED)
-# net1 = Net(nn.ReLU, X_train.shape[1], [128, 32], K).to(DEVICE)
-# criterion = "MSELoss"
-# num_epochs = 2
-
-# loss_history = []
-# learning_rates = np.arange(0.15, 0.25 + 0.01, 0.01)
-# for i in learning_rates:
-# 	optimizer = optim.SGD(net1.parameters(), lr=i)
-# 	loss = net1.train_model(criterion, optimizer, train_loader, num_epochs=num_epochs, verbose=True, device=DEVICE)
-# 	loss_history.append(loss)
-
-# plt.figure()
-# plt.plot(learning_rates, loss_history)
-
-# Train and Test model
-net = Net(nn.ReLU, X_train.shape[1], [128, 32], K, use_bias=True, learn_bias=True).to(DEVICE)
-criterion = "MSELoss"
-optimizer = optim.SGD(net.parameters(), lr=0.09)
-num_epochs = 2
-
-net.train_model(criterion, optimizer, train_loader, num_epochs=num_epochs, device=DEVICE)
-
-test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
-
-# Display Information
-net.display_summary(test_loader, test_acc)
-net.plot_params()
-
-# Spiral Data Set Classified graph
-X_all = sample_grid()
-y_pred = net(X_all.to(DEVICE)).cpu()
-plot_decision_map(X_all, y_pred, X_test, y_test)
-
-criterion = "MSELoss"
-num_epochs = 2
-
-no_bias_net = Net(nn.ReLU, X_train.shape[1], [128, 32], K, use_bias=False, learn_bias=False).to(DEVICE)
-optimizer = optim.SGD(no_bias_net.parameters(), lr=0.09)
-no_bias_net.train_model(criterion, optimizer, train_loader, num_epochs=num_epochs, device=DEVICE)
-no_bias_test_acc = no_bias_net.test_model(test_loader, verbose=False, device=DEVICE)
-
-no_learn_bias_net = Net(nn.ReLU, X_train.shape[1], [128, 32], K, use_bias=True, learn_bias=False).to(DEVICE)
-optimizer = optim.SGD(no_learn_bias_net.parameters(), lr=0.09)
-no_learn_bias_net.train_model(criterion, optimizer, train_loader, num_epochs=num_epochs, device=DEVICE)
-no_learn_bias_test_acc = no_learn_bias_net.test_model(test_loader, verbose=False, device=DEVICE)
-
-chartLabels = ['Using Learned Biases', 'No Biases', 'Using Biases without Learning']
-chartData = [test_acc, no_bias_test_acc, no_learn_bias_test_acc]
-plt.bar(chartLabels, chartData, alpha=0.5)
-plt.xlabel('Network Model')
-plt.ylabel('Accuracy')
-plt.title('Accuracy of the Network')
-plt.show()
+if __name__ == "__main__":
+	main()
