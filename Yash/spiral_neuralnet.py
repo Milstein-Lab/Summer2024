@@ -552,29 +552,29 @@ def sample_grid(M=500, x_max=2.0):
 					  dim=-1).view(-1, 2)
 	return X_all
 
-def generate_data(SEED, dataSplitSeed):
+def generate_data(SEED, dataSplitSeed, display=True):
 	K = 4
 	sigma = 0.16
 	N = 1000
 
-	fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(8, 4))
-
 	# Spiral Data Set graph
 	X, y = create_spiral_dataset(K, sigma, N)
-	axes[0].scatter(X[:, 0], X[:, 1], c = y)
-	axes[0].set_xlabel('x1')
-	axes[0].set_ylabel('x2')
-	axes[0].set_title('All Data')
-
-	# Test Data Set graph
 	X_test, y_test, X_train, y_train = shuffle_and_split_data(X, y, seed=dataSplitSeed)
-	axes[1].scatter(X_test[:, 0], X_test[:, 1], c=y_test)
-	axes[1].set_xlabel('x1')
-	axes[1].set_ylabel('x2')
-	axes[1].set_title('Test data')
 
-	fig.tight_layout()
-	fig.show()
+	if display:
+		fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(8, 4))
+		axes[0].scatter(X[:, 0], X[:, 1], c = y)
+		axes[0].set_xlabel('x1')
+		axes[0].set_ylabel('x2')
+		axes[0].set_title('All Data')
+
+		axes[1].scatter(X_test[:, 0], X_test[:, 1], c=y_test)
+		axes[1].set_xlabel('x1')
+		axes[1].set_ylabel('x2')
+		axes[1].set_title('Test data')
+
+		fig.tight_layout()
+		fig.show()
 
 	# Train and test DataLoaders
 	g_seed = torch.Generator()
@@ -637,14 +637,14 @@ def main():
 	DEVICE = set_device()
 	g_seed = torch.Generator()
 
-	K, X_test, y_test, X_train, y_train, test_loader, train_loader = generate_data(SEED, data_split_seed)
+	K, X_test, y_test, X_train, y_train, test_loader, train_loader = generate_data(SEED, data_split_seed, display=True)
 
 	# Train and Test model
 	set_seed(network_seed)
 	g_seed.manual_seed(data_order_seed)
 	net = Net(nn.ReLU, X_train.shape[1], [128, 32], K, use_bias=True, learn_bias=True).to(DEVICE)
 	criterion = "MSELoss"
-	optimizer = optim.SGD(net.parameters(), lr=0.09)
+	optimizer = optim.SGD(net.parameters(), lr=0.17)
 	num_epochs = 2
 	net.train_model(criterion, optimizer, train_loader, num_epochs=num_epochs, device=DEVICE)
 	test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
@@ -658,7 +658,7 @@ def main():
 	set_seed(network_seed)
 	g_seed.manual_seed(data_order_seed)
 	no_bias_net = Net(nn.ReLU, X_train.shape[1], [128, 32], K, use_bias=False, learn_bias=False).to(DEVICE)
-	optimizer = optim.SGD(no_bias_net.parameters(), lr=0.09)
+	optimizer = optim.SGD(no_bias_net.parameters(), lr=0.16)
 	no_bias_net.train_model(criterion, optimizer, train_loader, num_epochs=num_epochs, device=DEVICE)
 	no_bias_test_acc = no_bias_net.test_model(test_loader, verbose=False, device=DEVICE)
 	no_bias_net.display_summary(test_loader, no_bias_test_acc, title='Zero bias')
@@ -668,7 +668,7 @@ def main():
 	set_seed(network_seed)
 	g_seed.manual_seed(data_order_seed)
 	fixed_bias_net = Net(nn.ReLU, X_train.shape[1], [128, 32], K, use_bias=True, learn_bias=False).to(DEVICE)
-	optimizer = optim.SGD(fixed_bias_net.parameters(), lr=0.09)
+	optimizer = optim.SGD(fixed_bias_net.parameters(), lr=0.15)
 	fixed_bias_net.train_model(criterion, optimizer, train_loader, num_epochs=num_epochs, device=DEVICE)
 	fixed_bias_test_acc = fixed_bias_net.test_model(test_loader, verbose=False, device=DEVICE)
 	fixed_bias_net.display_summary(test_loader, fixed_bias_test_acc, title='Fixed bias')
