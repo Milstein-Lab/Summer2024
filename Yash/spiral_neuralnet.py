@@ -12,6 +12,10 @@ from torch.utils.data import DataLoader, TensorDataset
 from tqdm.auto import tqdm
 from IPython.display import display
 import random
+import pickle
+import os
+import click
+
 
 # set_seed() and seed_worker()
 def set_seed(seed=None, seed_torch=True):
@@ -331,6 +335,7 @@ class Net(nn.Module):
 		self.eval()
 
 		train_total, train_acc = self.test(train_loader, device)
+		self.train_acc = train_acc
 
 		self.final_weights = []
 		self.final_biases = []
@@ -365,6 +370,7 @@ class Net(nn.Module):
 		if verbose: 
 			print(f'Accuracy on the {test_total} testing samples: {test_acc:0.2f}\n')
 		
+		self.test_acc = test_acc
 		return test_acc
 	
 	def display_summary(self, test_loader, test_acc, title=None):
@@ -381,7 +387,7 @@ class Net(nn.Module):
 		  Nothing
 		'''
 		
-		print(self.mlp)
+		# print(self.mlp)
 
 		inputs, labels = next(iter(test_loader))
 
@@ -552,7 +558,7 @@ def sample_grid(M=500, x_max=2.0):
 					  dim=-1).view(-1, 2)
 	return X_all
 
-def generate_data(SEED, dataSplitSeed, display=True):
+def generate_data(dataSplitSeed, gen=None, display=True):
 	K = 4
 	sigma = 0.16
 	N = 1000
@@ -577,15 +583,15 @@ def generate_data(SEED, dataSplitSeed, display=True):
 		fig.show()
 
 	# Train and test DataLoaders
-	g_seed = torch.Generator()
-	g_seed.manual_seed(SEED)
+	if gen is None:
+		gen = torch.Generator()
 	batch_size = 1
 	test_data = TensorDataset(X_test, y_test)
 	test_loader = DataLoader(test_data, batch_size=len(test_data), shuffle=False, num_workers=0,
-							worker_init_fn=seed_worker, generator=g_seed)
+							worker_init_fn=seed_worker, generator=gen)
 	train_data = TensorDataset(X_train, y_train)
 	train_loader = DataLoader(train_data, batch_size=batch_size, drop_last=True, shuffle=True, num_workers=0,
-							worker_init_fn=seed_worker, generator=g_seed)
+							worker_init_fn=seed_worker, generator=gen)
 	
 	return K, X_test, y_test, X_train, y_train, test_loader, train_loader
 
@@ -629,66 +635,102 @@ def plot_decision_map(net, DEVICE, X_test, y_test, K, title=None, M=500, x_max=2
 	plt.title(f'{title} Classified Spiral Data Set')
 	fig.show()
 
-def main():
-	SEED = 2021
-	data_split_seed = SEED
-	network_seed = SEED + 1
-	data_order_seed = SEED + 2
-	DEVICE = set_device()
-	g_seed = torch.Generator()
 
-	K, X_test, y_test, X_train, y_train, test_loader, train_loader = generate_data(SEED, data_split_seed, display=True)
+@click.command()
+@click.option('--description', required=True, type=str, default='backprop_learned_bias')
+@click.option('--plot', is_flag=True)
+@click.option('--export', is_flag=True)
+@click.option('--export_file_path', type=click.Path(file_okay=True), default='data/spiralNet_exported_model_data.pkl')
+@click.option('--seed', type=int, default=2021)
+def main(description, plot, export, export_file_path, seed):
+	data_split_seed = seed
+	network_seed = seed + 1
+	data_order_seed = seed + 2
+	DEVICE = set_device()
+	local_torch_random = torch.Generator()
+
+	K, X_test, y_test, X_train, y_train, test_loader, train_loader = generate_data(data_split_seed, local_torch_random, display=plot)
 
 	# Train and Test model
 	set_seed(network_seed)
-	g_seed.manual_seed(data_order_seed)
-	net = Net(nn.ReLU, X_train.shape[1], [128, 32], K, use_bias=True, learn_bias=True).to(DEVICE)
+	local_torch_random.manual_seed(data_order_seed)
+
+	label_dict = {'backprop_learned_bias': 'Backprop learned bias',
+			   'backprop_zero_bias': 'Backprop zero bias',
+			   'backprop_fixed_bias': 'Backprop fixed bias'}
+	
+	lr_dict = {'backprop_learned_bias': 0.05,
+			   'backprop_zero_bias': 0.05,
+			   'backprop_fixed_bias': 0.05}
+	
+	if description == 'backprop_learned_bias':
+		net = Net(nn.ReLU, X_train.shape[1], [128, 32], K, use_bias=True, learn_bias=True).to(DEVICE)
+	elif description == 'backprop_zero_bias':
+		net = Net(nn.ReLU, X_train.shape[1], [128, 32], K, use_bias=False, learn_bias=False).to(DEVICE)
+	elif description == 'backprop_fixed_bias':
+		net = Net(nn.ReLU, X_train.shape[1], [128, 32], K, use_bias=True, learn_bias=False).to(DEVICE)
 	criterion = "MSELoss"
-	optimizer = optim.SGD(net.parameters(), lr=0.17)
+	optimizer = optim.SGD(net.parameters(), lr=lr_dict[description])
 	num_epochs = 2
+	local_torch_random.manual_seed(data_order_seed)
 	net.train_model(criterion, optimizer, train_loader, num_epochs=num_epochs, device=DEVICE)
 	test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
-	net.display_summary(test_loader, test_acc, title='Learned bias')
-	net.plot_params(title='Learned bias')
-	plot_decision_map(net, DEVICE, X_test, y_test, K, title="Learned bias")	
+	if plot:
+		# TODO combine these into one big plot
+		net.display_summary(test_loader, test_acc, title=label_dict[description])
+		net.plot_params(title=label_dict[description])
 
-	criterion = "MSELoss"
-	num_epochs = 2
+	if export:
+		if os.path.isfile(export_file_path):
+			with open(export_file_path, "rb") as f:
+				model_data_dict = pickle.load(f)
+		else:
+			model_data_dict = {}
+		model_data_dict[description] = net
+		with open(export_file_path, "wb") as f:
+			pickle.dump(model_data_dict, f)
 
-	set_seed(network_seed)
-	g_seed.manual_seed(data_order_seed)
-	no_bias_net = Net(nn.ReLU, X_train.shape[1], [128, 32], K, use_bias=False, learn_bias=False).to(DEVICE)
-	optimizer = optim.SGD(no_bias_net.parameters(), lr=0.16)
-	no_bias_net.train_model(criterion, optimizer, train_loader, num_epochs=num_epochs, device=DEVICE)
-	no_bias_test_acc = no_bias_net.test_model(test_loader, verbose=False, device=DEVICE)
-	no_bias_net.display_summary(test_loader, no_bias_test_acc, title='Zero bias')
-	no_bias_net.plot_params(title='Zero bias')
-	plot_decision_map(no_bias_net, DEVICE, X_test, y_test, K, title="Zero bias")
+	# TODO fix this by making new hidden output and all variables for test
+	if plot:
+		plot_decision_map(net, DEVICE, X_test, y_test, K, title=label_dict[description])
 
-	set_seed(network_seed)
-	g_seed.manual_seed(data_order_seed)
-	fixed_bias_net = Net(nn.ReLU, X_train.shape[1], [128, 32], K, use_bias=True, learn_bias=False).to(DEVICE)
-	optimizer = optim.SGD(fixed_bias_net.parameters(), lr=0.15)
-	fixed_bias_net.train_model(criterion, optimizer, train_loader, num_epochs=num_epochs, device=DEVICE)
-	fixed_bias_test_acc = fixed_bias_net.test_model(test_loader, verbose=False, device=DEVICE)
-	fixed_bias_net.display_summary(test_loader, fixed_bias_test_acc, title='Fixed bias')
-	fixed_bias_net.plot_params(title='Fixed bias')
-	plot_decision_map(fixed_bias_net, DEVICE, X_test, y_test, K, title="Fixed bias")
+	# criterion = "MSELoss"
+	# num_epochs = 2
 
-	chartLabels = ['Using Learned Biases', 'No Biases', 'Using Biases without Learning']
-	chartData = [test_acc, no_bias_test_acc, fixed_bias_test_acc]
-	fig = plt.figure()
-	bars = plt.bar(chartLabels, chartData, alpha=0.5)
-	plt.xlabel('Network Model')
-	plt.ylabel('Accuracy')
-	plt.title('Accuracy of the Network')
-	for bar in bars:
-		yval = bar.get_height()
-		plt.text(bar.get_x() + bar.get_width()/2.0, yval, round(yval, 2), va='bottom') 
-	fig.show()
+	# set_seed(network_seed)
+	# g_seed.manual_seed(data_order_seed)
+	# no_bias_net = Net(nn.ReLU, X_train.shape[1], [128, 32], K, use_bias=False, learn_bias=False).to(DEVICE)
+	# optimizer = optim.SGD(no_bias_net.parameters(), lr=0.16)
+	# no_bias_net.train_model(criterion, optimizer, train_loader, num_epochs=num_epochs, device=DEVICE)
+	# no_bias_test_acc = no_bias_net.test_model(test_loader, verbose=False, device=DEVICE)
+	# no_bias_net.display_summary(test_loader, no_bias_test_acc, title='Zero bias')
+	# no_bias_net.plot_params(title='Zero bias')
+	# plot_decision_map(no_bias_net, DEVICE, X_test, y_test, K, title="Zero bias")
 
+	# set_seed(network_seed)
+	# g_seed.manual_seed(data_order_seed)
+	# fixed_bias_net = Net(nn.ReLU, X_train.shape[1], [128, 32], K, use_bias=True, learn_bias=False).to(DEVICE)
+	# optimizer = optim.SGD(fixed_bias_net.parameters(), lr=0.15)
+	# fixed_bias_net.train_model(criterion, optimizer, train_loader, num_epochs=num_epochs, device=DEVICE)
+	# fixed_bias_test_acc = fixed_bias_net.test_model(test_loader, verbose=False, device=DEVICE)
+	# fixed_bias_net.display_summary(test_loader, fixed_bias_test_acc, title='Fixed bias')
+	# fixed_bias_net.plot_params(title='Fixed bias')
+	# plot_decision_map(fixed_bias_net, DEVICE, X_test, y_test, K, title="Fixed bias")
 
-	plt.show()
+	# chartLabels = ['Using Learned Biases', 'No Biases', 'Using Biases without Learning']
+	# chartData = [test_acc, no_bias_test_acc, fixed_bias_test_acc]
+	# fig = plt.figure()
+	# bars = plt.bar(chartLabels, chartData, alpha=0.5)
+	# plt.xlabel('Network Model')
+	# plt.ylabel('Accuracy')
+	# plt.title('Accuracy of the Network')
+	# for bar in bars:
+	# 	yval = bar.get_height()
+	# 	plt.text(bar.get_x() + bar.get_width()/2.0, yval, round(yval, 2), va='bottom') 
+	# fig.show()
+
+	if plot:
+		plt.show()
 	
 if __name__ == "__main__":
-	main()
+	main(standalone_mode=False)
