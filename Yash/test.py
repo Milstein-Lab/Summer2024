@@ -10,7 +10,8 @@ def main():
 	DEVICE = set_device()
 	local_torch_random = torch.Generator()
 
-	K, X_test, y_test, X_train, y_train, test_loader, train_loader = generate_data(data_split_seed, local_torch_random, display=False)
+	num_classes = 4
+	X_test, y_test, X_train, y_train, test_loader, train_loader = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=False)
 
 	# Train and Test model
 	set_seed(network_seed)
@@ -28,7 +29,7 @@ def main():
 
 	net.display_summary(test_loader, net.test_acc, title=label_dict[description])
 	net.plot_params(title=label_dict[description])
-	plot_decision_map(net, DEVICE, X_test, y_test, K, title=label_dict[description])
+	plot_decision_map(net, DEVICE, X_test, y_test, num_classes, title=label_dict[description])
 	globals().update(locals())
 
 

@@ -122,7 +122,7 @@ class Net(nn.Module):
 	Simulate MLP Network
 	"""
 
-	def __init__(self, actv, input_feature_num, hidden_unit_nums, output_feature_num, use_bias=True, learn_bias=True):
+	def __init__(self, actv, input_feature_num, hidden_unit_nums, output_feature_num, description=None, use_bias=True, learn_bias=True):
 		"""
 		Initialize MLP Network parameters
 	
@@ -135,6 +135,9 @@ class Net(nn.Module):
 			Number of units per hidden layer. List of integers
 		  output_feature_num: int
 			Number of output features
+		  description: str
+		  use_bias: bool
+		  learn_bias:bool
 	
 		Returns:
 		  Nothing
@@ -142,6 +145,7 @@ class Net(nn.Module):
 		super(Net, self).__init__()
 		self.input_feature_num = input_feature_num # Save the input size for reshaping later
 		self.hidden_unit_nums = hidden_unit_nums
+		self.description = description
 		self.use_bias = use_bias
 		self.learn_bias = learn_bias
 
@@ -183,33 +187,37 @@ class Net(nn.Module):
 			if self.use_bias:
 				self.initial_biases.append(layer.bias.data.clone())
 
-	def forward(self, x):
+	def forward(self, x, store=True):
 		"""
 		Simulate forward pass of MLP Network
 	
 		Args:
 		  x: torch.tensor
 			Input data
+		  store: boolean
 	
 		Returns:
 		  logits: Instance of MLP
 			Forward pass of MLP
 		"""
 		
-		self.hidden_states = []  # Clear previous hidden outputs
-		self.hidden_outputs = []
+		if store:
+			self.hidden_states = []  # Clear previous hidden outputs
+			self.hidden_outputs = []
 
 		for layer in self.mlp:
 			x = layer(x)
-			if isinstance(layer, nn.Linear) and layer != self.output_state_layer and layer != self.last_activation: 
-				self.hidden_states.append(x.detach())  # Store state of hidden layers before activation 
-			elif layer in self.hidden_activations:
-				self.hidden_outputs.append(x.detach()) # Store state of hidden layers after activation
+			if store:
+				if isinstance(layer, nn.Linear):
+					if layer is self.output_state_layer:
+						self.output_state = x.detach()  # State of the last layer before activation
+					else:
+						self.hidden_states.append(x.detach())  # Store state of hidden layers before activation 
+				elif layer in self.hidden_activations:
+					self.hidden_outputs.append(x.detach()) # Store state of hidden layers after activation
+				elif layer is self.last_activation:
+					self.processed_output = x.detach()  # Output of the last layer after activation
 		
-		self.output_state = x.detach()  # State of the last layer before activation
-		x = self.last_activation(x)
-		self.processed_output = x.detach()  # Output of the last layer after activation
-
 		return x
 	
 	def reinit(self):
@@ -386,8 +394,6 @@ class Net(nn.Module):
 		Returns:
 		  Nothing
 		'''
-		
-		# print(self.mlp)
 
 		inputs, labels = next(iter(test_loader))
 
@@ -443,6 +449,8 @@ class Net(nn.Module):
 		fig.tight_layout()
 		fig.show()
 
+		return axes
+
 	def plot_params(self, title=None):
 		'''
 		Plot initial and final weights and biases for all layers.
@@ -494,47 +502,7 @@ class Net(nn.Module):
 			fig.suptitle(title)
 		fig.tight_layout()
 		fig.show()
-		
-# Shuffle and split data; define X_test, y_test, X_train, y_train
-def shuffle_and_split_data(X, y, seed):
-	"""
-	Helper function to shuffle and split data
-  
-	Args:
-	  X: torch.tensor
-		Input data
-	  y: torch.tensor
-		Corresponding target variables
-	  seed: int
-		Set seed for reproducibility
-  
-	Returns:
-	  X_test: torch.tensor
-		Test data [20% of X]
-	  y_test: torch.tensor
-		Labels corresponding to above mentioned test data
-	  X_train: torch.tensor
-		Train data [80% of X]
-	  y_train: torch.tensor
-		Labels corresponding to above mentioned train data
-	"""
-	# Set seed for reproducibility
-	torch.manual_seed(seed)
-	# Number of samples
-	N = X.shape[0]
-	# Shuffle data
-	shuffled_indices = torch.randperm(N)   # Get indices to shuffle data, could use torch.randperm
-	X = X[shuffled_indices]
-	y = y[shuffled_indices]
 
-	# Split data into train/test
-	test_size = int(0.2 * N)    # Assign test datset size using 20% of samples
-	X_test = X[:test_size]
-	y_test = y[:test_size]
-	X_train = X[test_size:]
-	y_train = y[test_size:]
-
-	return X_test, y_test, X_train, y_train
 
 def sample_grid(M=500, x_max=2.0):
 	"""
@@ -558,21 +526,34 @@ def sample_grid(M=500, x_max=2.0):
 					  dim=-1).view(-1, 2)
 	return X_all
 
-def generate_data(dataSplitSeed, gen=None, display=True):
-	K = 4
-	sigma = 0.16
-	N = 1000
+def generate_data(K=4, sigma=0.16, N=1000, seed=None, gen=None, display=True):
 
+	# Set seed for reproducibility
+	if seed is not None:
+		torch.manual_seed(seed)
+	
 	# Spiral Data Set graph
 	X, y = create_spiral_dataset(K, sigma, N)
-	X_test, y_test, X_train, y_train = shuffle_and_split_data(X, y, seed=dataSplitSeed)
+	
+	num_samples = X.shape[0]
+	# Shuffle data
+	shuffled_indices = torch.randperm(num_samples)   # Get indices to shuffle data, could use torch.randperm
+	X = X[shuffled_indices]
+	y = y[shuffled_indices]
+
+	# Split data into train/test
+	test_size = int(0.2 * num_samples)    # Assign test datset size using 20% of samples
+	X_test = X[:test_size]
+	y_test = y[:test_size]
+	X_train = X[test_size:]
+	y_train = y[test_size:]
 
 	if display:
 		fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(8, 4))
 		axes[0].scatter(X[:, 0], X[:, 1], c = y)
 		axes[0].set_xlabel('x1')
 		axes[0].set_ylabel('x2')
-		axes[0].set_title('All Data')
+		axes[0].set_title('Train Data')
 
 		axes[1].scatter(X_test[:, 0], X_test[:, 1], c=y_test)
 		axes[1].set_xlabel('x1')
@@ -593,7 +574,7 @@ def generate_data(dataSplitSeed, gen=None, display=True):
 	train_loader = DataLoader(train_data, batch_size=batch_size, drop_last=True, shuffle=True, num_workers=0,
 							worker_init_fn=seed_worker, generator=gen)
 	
-	return K, X_test, y_test, X_train, y_train, test_loader, train_loader
+	return X_test, y_test, X_train, y_train, test_loader, train_loader
 
 def plot_decision_map(net, DEVICE, X_test, y_test, K, title=None, M=500, x_max=2.0, eps=1e-3):
 	"""
@@ -619,7 +600,8 @@ def plot_decision_map(net, DEVICE, X_test, y_test, K, title=None, M=500, x_max=2
 	  Nothing
 	"""
 	X_all = sample_grid()
-	y_pred = net(X_all.to(DEVICE)).cpu()
+	y_pred = net.forward(X_all.to(DEVICE), store=False).cpu()
+	# y_pred = net(X_all.to(DEVICE)).cpu()
 
 	decision_map = torch.argmax(y_pred, dim=1)
 
@@ -639,17 +621,19 @@ def plot_decision_map(net, DEVICE, X_test, y_test, K, title=None, M=500, x_max=2
 @click.command()
 @click.option('--description', required=True, type=str, default='backprop_learned_bias')
 @click.option('--plot', is_flag=True)
+@click.option('--interactive', is_flag=True)
 @click.option('--export', is_flag=True)
 @click.option('--export_file_path', type=click.Path(file_okay=True), default='data/spiralNet_exported_model_data.pkl')
 @click.option('--seed', type=int, default=2021)
-def main(description, plot, export, export_file_path, seed):
+def main(description, plot, interactive, export, export_file_path, seed):
 	data_split_seed = seed
 	network_seed = seed + 1
 	data_order_seed = seed + 2
 	DEVICE = set_device()
 	local_torch_random = torch.Generator()
 
-	K, X_test, y_test, X_train, y_train, test_loader, train_loader = generate_data(data_split_seed, local_torch_random, display=plot)
+	num_classes = 4
+	X_test, y_test, X_train, y_train, test_loader, train_loader = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=plot)
 
 	# Train and Test model
 	set_seed(network_seed)
@@ -659,26 +643,28 @@ def main(description, plot, export, export_file_path, seed):
 			   'backprop_zero_bias': 'Backprop zero bias',
 			   'backprop_fixed_bias': 'Backprop fixed bias'}
 	
-	lr_dict = {'backprop_learned_bias': 0.05,
-			   'backprop_zero_bias': 0.05,
-			   'backprop_fixed_bias': 0.05}
+	lr_dict = {'backprop_learned_bias': 0.11,
+			   'backprop_zero_bias': 0.01,
+			   'backprop_fixed_bias': 0.10}
 	
 	if description == 'backprop_learned_bias':
-		net = Net(nn.ReLU, X_train.shape[1], [128, 32], K, use_bias=True, learn_bias=True).to(DEVICE)
+		net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=True).to(DEVICE)
 	elif description == 'backprop_zero_bias':
-		net = Net(nn.ReLU, X_train.shape[1], [128, 32], K, use_bias=False, learn_bias=False).to(DEVICE)
+		net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=False, learn_bias=False).to(DEVICE)
 	elif description == 'backprop_fixed_bias':
-		net = Net(nn.ReLU, X_train.shape[1], [128, 32], K, use_bias=True, learn_bias=False).to(DEVICE)
+		net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
+
 	criterion = "MSELoss"
 	optimizer = optim.SGD(net.parameters(), lr=lr_dict[description])
 	num_epochs = 2
 	local_torch_random.manual_seed(data_order_seed)
 	net.train_model(criterion, optimizer, train_loader, num_epochs=num_epochs, device=DEVICE)
 	test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
+
 	if plot:
-		# TODO combine these into one big plot
 		net.display_summary(test_loader, test_acc, title=label_dict[description])
 		net.plot_params(title=label_dict[description])
+		plot_decision_map(net, DEVICE, X_test, y_test, num_classes, title=label_dict[description])
 
 	if export:
 		if os.path.isfile(export_file_path):
@@ -689,34 +675,7 @@ def main(description, plot, export, export_file_path, seed):
 		model_data_dict[description] = net
 		with open(export_file_path, "wb") as f:
 			pickle.dump(model_data_dict, f)
-
-	# TODO fix this by making new hidden output and all variables for test
-	if plot:
-		plot_decision_map(net, DEVICE, X_test, y_test, K, title=label_dict[description])
-
-	# criterion = "MSELoss"
-	# num_epochs = 2
-
-	# set_seed(network_seed)
-	# g_seed.manual_seed(data_order_seed)
-	# no_bias_net = Net(nn.ReLU, X_train.shape[1], [128, 32], K, use_bias=False, learn_bias=False).to(DEVICE)
-	# optimizer = optim.SGD(no_bias_net.parameters(), lr=0.16)
-	# no_bias_net.train_model(criterion, optimizer, train_loader, num_epochs=num_epochs, device=DEVICE)
-	# no_bias_test_acc = no_bias_net.test_model(test_loader, verbose=False, device=DEVICE)
-	# no_bias_net.display_summary(test_loader, no_bias_test_acc, title='Zero bias')
-	# no_bias_net.plot_params(title='Zero bias')
-	# plot_decision_map(no_bias_net, DEVICE, X_test, y_test, K, title="Zero bias")
-
-	# set_seed(network_seed)
-	# g_seed.manual_seed(data_order_seed)
-	# fixed_bias_net = Net(nn.ReLU, X_train.shape[1], [128, 32], K, use_bias=True, learn_bias=False).to(DEVICE)
-	# optimizer = optim.SGD(fixed_bias_net.parameters(), lr=0.15)
-	# fixed_bias_net.train_model(criterion, optimizer, train_loader, num_epochs=num_epochs, device=DEVICE)
-	# fixed_bias_test_acc = fixed_bias_net.test_model(test_loader, verbose=False, device=DEVICE)
-	# fixed_bias_net.display_summary(test_loader, fixed_bias_test_acc, title='Fixed bias')
-	# fixed_bias_net.plot_params(title='Fixed bias')
-	# plot_decision_map(fixed_bias_net, DEVICE, X_test, y_test, K, title="Fixed bias")
-
+	
 	# chartLabels = ['Using Learned Biases', 'No Biases', 'Using Biases without Learning']
 	# chartData = [test_acc, no_bias_test_acc, fixed_bias_test_acc]
 	# fig = plt.figure()
@@ -731,6 +690,10 @@ def main(description, plot, export, export_file_path, seed):
 
 	if plot:
 		plt.show()
-	
+
+	if interactive:
+		globals().update(locals())
+
+
 if __name__ == "__main__":
 	main(standalone_mode=False)
