@@ -30,7 +30,6 @@ def main(description, seed, export, export_file_path):
 	learning_rates = np.arange(0.01, 0.3 + 0.01, 0.01)
 	for i in learning_rates:
 		spiral.set_seed(network_seed)
-		local_torch_random.manual_seed(data_order_seed)
 
 		if description == 'backprop_learned_bias':
 			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=True).to(DEVICE)
@@ -52,7 +51,7 @@ def main(description, seed, export, export_file_path):
 	for i, txt in enumerate(loss_history):
 		plt.annotate(f'{learning_rates[i]:.2f}', (learning_rates[i], txt)) 
 	plt.xlabel('Learning Rate')
-	plt.ylabel('Loss')
+	plt.ylabel('Accuracy')
 	plt.title(f'Learning Rate Screen for {label_dict[description]}')
 	if export:
 		plt.savefig(f'{export_file_path}/{description}_screen.svg', format='svg')

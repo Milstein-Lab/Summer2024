@@ -151,8 +151,8 @@ class Net(nn.Module):
 
 		self.hidden_states = []
 		self.hidden_outputs = []
-		self.output_state = []
-		self.processed_output = []
+		self.output_state = None
+		self.processed_output = None
 
 		self.hidden_activations = []
 
@@ -172,6 +172,7 @@ class Net(nn.Module):
 		layers.append(last_layer) # ReLU after output state layer
 		self.last_activation = last_layer
 
+		# TODO fix the order in net
 		self.mlp = nn.Sequential(*layers)
 
 		# Make the weights not learn 
@@ -202,8 +203,7 @@ class Net(nn.Module):
 		"""
 		
 		if store:
-			self.hidden_states = []  # Clear previous hidden outputs
-			self.hidden_outputs = []
+			self.reinit()
 
 		for layer in self.mlp:
 			x = layer(x)
@@ -293,9 +293,6 @@ class Net(nn.Module):
 		self.train_labels = []
 
 		for epoch in tqdm(range(num_epochs)):  # Loop over the dataset multiple times
-			running_loss = 0.0
-			epoch_hidden_states = []
-			epoch_hidden_outputs = []
 			for i, data in enumerate(train_loader, 0):
 				# Get the inputs; data is a list of [inputs, labels]
 				inputs, labels = data
@@ -601,7 +598,6 @@ def plot_decision_map(net, DEVICE, X_test, y_test, K, title=None, M=500, x_max=2
 	"""
 	X_all = sample_grid()
 	y_pred = net.forward(X_all.to(DEVICE), store=False).cpu()
-	# y_pred = net(X_all.to(DEVICE)).cpu()
 
 	decision_map = torch.argmax(y_pred, dim=1)
 
@@ -611,7 +607,7 @@ def plot_decision_map(net, DEVICE, X_test, y_test, K, title=None, M=500, x_max=2
 
 	decision_map = decision_map.view(M, M)
 	fig = plt.figure()
-	plt.imshow(decision_map, extent=[-x_max, x_max, -x_max, x_max], cmap='jet')
+	plt.imshow(decision_map.T, extent=[-x_max, x_max, -x_max, x_max], cmap='jet') # TODO flip so it is not mirrored 
 	plt.xlabel('x1')
 	plt.ylabel('x2')
 	plt.title(f'{title} Classified Spiral Data Set')
@@ -637,7 +633,6 @@ def main(description, plot, interactive, export, export_file_path, seed):
 
 	# Train and Test model
 	set_seed(network_seed)
-	local_torch_random.manual_seed(data_order_seed)
 
 	label_dict = {'backprop_learned_bias': 'Backprop learned bias',
 			   'backprop_zero_bias': 'Backprop zero bias',
