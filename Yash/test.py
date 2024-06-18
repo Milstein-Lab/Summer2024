@@ -1,8 +1,9 @@
 import pickle 
 from spiral_neuralnet import *
 
-
-def main():
+@click.command()
+@click.option('--description', required=True, type=str, default='backprop_learned_bias')
+def main(description):
 	seed = 2021
 	data_split_seed = seed
 	network_seed = seed + 1
@@ -23,13 +24,13 @@ def main():
 
 	with open("C:/Yash Dev/Summer2024/Yash/data/spiralNet_exported_model_data.pkl", "rb") as f:
 		model_data_dict = pickle.load(f)
-	
-	description = 'backprop_learned_bias'
+
 	net = model_data_dict[description]
 
 	net.display_summary(test_loader, net.test_acc, title=label_dict[description])
 	net.plot_params(title=label_dict[description])
 	plot_decision_map(net, DEVICE, X_test, y_test, num_classes, title=label_dict[description])
+
 	globals().update(locals())
 
 

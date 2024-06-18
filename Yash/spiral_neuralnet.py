@@ -165,14 +165,15 @@ class Net(nn.Module):
 			self.hidden_activations.append(act_layer)
 			prev_size = hidden_size
 
-		self.output_state_layer = nn.Linear(prev_size, output_feature_num, bias=use_bias)
-		layers.append(self.output_state_layer) # Output state layer
+		self.output_state_layer = []
+		self.output_state_layer.append(nn.Linear(prev_size, output_feature_num, bias=use_bias))
+		layers.append(self.output_state_layer[0]) # Output state layer
 
 		last_layer = actv()
 		layers.append(last_layer) # ReLU after output state layer
-		self.last_activation = last_layer
+		self.last_activation = []
+		self.last_activation.append(last_layer)
 
-		# TODO fix the order in net
 		self.mlp = nn.Sequential(*layers)
 
 		# Make the weights not learn 
@@ -209,13 +210,13 @@ class Net(nn.Module):
 			x = layer(x)
 			if store:
 				if isinstance(layer, nn.Linear):
-					if layer is self.output_state_layer:
+					if layer in self.output_state_layer:
 						self.output_state = x.detach()  # State of the last layer before activation
 					else:
 						self.hidden_states.append(x.detach())  # Store state of hidden layers before activation 
 				elif layer in self.hidden_activations:
 					self.hidden_outputs.append(x.detach()) # Store state of hidden layers after activation
-				elif layer is self.last_activation:
+				elif layer in self.last_activation:
 					self.processed_output = x.detach()  # Output of the last layer after activation
 		
 		return x
@@ -607,7 +608,7 @@ def plot_decision_map(net, DEVICE, X_test, y_test, K, title=None, M=500, x_max=2
 
 	decision_map = decision_map.view(M, M)
 	fig = plt.figure()
-	plt.imshow(decision_map.T, extent=[-x_max, x_max, -x_max, x_max], cmap='jet') # TODO flip so it is not mirrored 
+	plt.imshow(decision_map.T, extent=[-x_max, x_max, -x_max, x_max], cmap='jet', origin='lower')
 	plt.xlabel('x1')
 	plt.ylabel('x2')
 	plt.title(f'{title} Classified Spiral Data Set')
