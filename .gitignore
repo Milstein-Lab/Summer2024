@@ -2,3 +2,4 @@
 *.png
 *.svg
 /Yash/tutorial.ipynb
+/Yash/__pycache__/*
