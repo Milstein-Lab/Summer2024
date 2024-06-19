@@ -256,7 +256,7 @@ class Net(nn.Module):
 		acc = 100 * correct / total
 		return total, acc
 	
-	def train_model(self, criterion, optimizer, train_loader, num_epochs=1, verbose=False, device='cpu'):
+	def train_model_backprop(self, criterion, optimizer, train_loader, num_epochs=1, verbose=False, device='cpu'):
 		"""
 		Accumulate training loss/Evaluate performance
 	
@@ -330,7 +330,6 @@ class Net(nn.Module):
 				self.training_losses.append(loss.item())
 
 		# Concatenate hidden states and outputs within the current batch
-		
 		for layer_idx in range(len(self.hidden_unit_nums)):
 			self.train_hidden_states[layer_idx] = torch.stack(self.train_hidden_states[layer_idx]).squeeze()
 			self.train_hidden_outputs[layer_idx] = torch.stack(self.train_hidden_outputs[layer_idx]).squeeze()
@@ -354,6 +353,30 @@ class Net(nn.Module):
 			print(f'\nAccuracy on the {train_total} training samples: {train_acc:0.2f}')
 
 		return train_acc
+
+	def backward(self, outputsF, targets):
+		dend_stateF = torch.sum()
+		nudge = targets - outputsF
+
+	def step(self, lr):
+		with torch.no_grad():
+			pass
+
+	def train_model_tempcontrast(self, lr, train_loader, num_epochs=1, verbose=False, device='cpu'):
+		self.to(device)
+		self.eval()
+		self.training_losses = []
+
+		for epoch in tqdm(range(num_epochs)): 
+			for i, data in enumerate(train_loader, 0):
+				inputs, labels = data
+				inputs = inputs.to(device).float()
+				labels = labels.to(device).long()
+
+				outputsF = self.forward(inputs)
+				error = outputsF - labels
+				self.backward(outputsF, labels)
+				self.step(lr)
 	
 	def test_model(self, test_loader, verbose=True, device='cpu'):
 		'''
@@ -654,7 +677,7 @@ def main(description, plot, interactive, export, export_file_path, seed):
 	optimizer = optim.SGD(net.parameters(), lr=lr_dict[description])
 	num_epochs = 2
 	local_torch_random.manual_seed(data_order_seed)
-	net.train_model(criterion, optimizer, train_loader, num_epochs=num_epochs, device=DEVICE)
+	net.train_model_backprop(criterion, optimizer, train_loader, num_epochs=num_epochs, device=DEVICE)
 	test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
 
 	if plot:
@@ -671,18 +694,6 @@ def main(description, plot, interactive, export, export_file_path, seed):
 		model_data_dict[description] = net
 		with open(export_file_path, "wb") as f:
 			pickle.dump(model_data_dict, f)
-	
-	# chartLabels = ['Using Learned Biases', 'No Biases', 'Using Biases without Learning']
-	# chartData = [test_acc, no_bias_test_acc, fixed_bias_test_acc]
-	# fig = plt.figure()
-	# bars = plt.bar(chartLabels, chartData, alpha=0.5)
-	# plt.xlabel('Network Model')
-	# plt.ylabel('Accuracy')
-	# plt.title('Accuracy of the Network')
-	# for bar in bars:
-	# 	yval = bar.get_height()
-	# 	plt.text(bar.get_x() + bar.get_width()/2.0, yval, round(yval, 2), va='bottom') 
-	# fig.show()
 
 	if plot:
 		plt.show()

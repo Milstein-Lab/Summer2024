@@ -42,7 +42,7 @@ def main(description, seed, export, export_file_path):
 		optimizer = optim.SGD(net.parameters(), lr=i)
 		num_epochs = 2
 		local_torch_random.manual_seed(data_order_seed)
-		loss = net.train_model(criterion, optimizer, train_loader, num_epochs=num_epochs, verbose=True, device=DEVICE)
+		loss = net.train_model_backprop(criterion, optimizer, train_loader, num_epochs=num_epochs, verbose=True, device=DEVICE)
 		loss_history.append(loss)
 		print(f'Learning Rate: {i}\n')
 
@@ -57,6 +57,18 @@ def main(description, seed, export, export_file_path):
 		plt.savefig(f'{export_file_path}/{description}_screen.svg', format='svg')
 		plt.savefig(f'{export_file_path}/{description}_screen.png', format='png')
 	fig.show()
+
+	# chartLabels = ['Using Learned Biases', 'No Biases', 'Using Biases without Learning']
+	# chartData = [test_acc, no_bias_test_acc, fixed_bias_test_acc]
+	# fig = plt.figure()
+	# bars = plt.bar(chartLabels, chartData, alpha=0.5)
+	# plt.xlabel('Network Model')
+	# plt.ylabel('Accuracy')
+	# plt.title('Accuracy of the Network')
+	# for bar in bars:
+	# 	yval = bar.get_height()
+	# 	plt.text(bar.get_x() + bar.get_width()/2.0, yval, round(yval, 2), va='bottom') 
+	# fig.show()
 
 	plt.show()
 
