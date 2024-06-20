@@ -127,20 +127,16 @@ class Net(nn.Module):
 		Initialize MLP Network parameters
 	
 		Args:
-		  actv: string
-			Activation function
-		  input_feature_num: int
-			Number of input features
-		  hidden_unit_nums: list
-			Number of units per hidden layer. List of integers
-		  output_feature_num: int
-			Number of output features
-		  description: str
-		  use_bias: bool
-		  learn_bias:bool
+		- actv (string): Activation function
+		- input_feature_num (int): Number of input features
+		- hidden_unit_nums (list): Number of units per hidden layer. List of integers
+		- output_feature_num (int): Number of output features
+		- description (string): Learning rule to use
+		- use_bias (boolean): If True, randomly initialize biases. If False, set all biases to 0.
+		- learn_bias (boolean): If True, use learning rule to update biases. If False, otherwise.
 	
 		Returns:
-		  Nothing
+		- Nothing
 		"""
 		super(Net, self).__init__()
 		self.input_feature_num = input_feature_num # Save the input size for reshaping later
@@ -175,6 +171,7 @@ class Net(nn.Module):
 		self.last_activation.append(last_layer)
 
 		self.mlp = nn.Sequential(*layers)
+		
 
 		# Make the weights not learn 
 		if not learn_bias and use_bias:
@@ -194,13 +191,11 @@ class Net(nn.Module):
 		Simulate forward pass of MLP Network
 	
 		Args:
-		  x: torch.tensor
-			Input data
-		  store: boolean
+		- x (torch.tensor): Input data
+		- store (boolean): If True, store intermediate states and activities of each layer
 	
 		Returns:
-		  logits: Instance of MLP
-			Forward pass of MLP
+		- x (torch.tensor): Output data
 		"""
 		
 		if store:
@@ -230,16 +225,12 @@ class Net(nn.Module):
 		Function to gauge network performance
 	
 		Args:
-		  data_loader: torch.utils.data type
-			Combines the test dataset and sampler, and provides an iterable over the given dataset.
-		  device: string
-			CUDA/GPU if available, CPU otherwise
+		- data_loader (torch.utils.data type): Combines the test dataset and sampler, and provides an iterable over the given dataset.
+		- device (string): CUDA/GPU if available, CPU otherwise
 	
 		Returns:
-		  acc: float
-			Performance of the network
-		  total: int
-			Number of datapoints in the dataloader
+		- acc (float): Performance of the network
+		- total (int): Number of datapoints in the dataloader
 		"""
 		correct = 0
 		total = 0
@@ -258,28 +249,19 @@ class Net(nn.Module):
 	
 	def train_model_backprop(self, criterion, optimizer, train_loader, num_epochs=1, verbose=False, device='cpu'):
 		"""
-		Accumulate training loss/Evaluate performance
+		Train model with backprop, accumulate loss, evaluate performance. 
 	
 		Args:
-		  criterion: torch.nn type
-			Loss function
-		  optimizer: torch.optim type
-			Implements Adam or MSELoss algorithm.
-		  train_loader: torch.utils.data type
-			Combines the train dataset and sampler, and provides an iterable over the given dataset.
-		  test_loader: torch.utils.data type
-			Combines the test dataset and sampler, and provides an iterable over the given dataset.
-		  num_epochs: int
-			Number of epochs [default: 1]
-		  verbose: boolean
-			If True, print statistics
-		  training_plot=False
-			If True, display training plot
-		  device: string
-			CUDA/GPU if available, CPU otherwise
+		- criterion (torch.nn type): Loss function
+		- optimizer (torch.optim type): Implements Adam or MSELoss algorithm.
+		- train_loader (torch.utils.data type): Combines the train dataset and sampler, and provides an iterable over the given dataset.
+		- test_loader (torch.utils.data type): Combines the test dataset and sampler, and provides an iterable over the given dataset.
+		- num_epochs (int): Number of epochs [default: 1]
+		- verbose (boolean): If True, print statistics
+		- device (string): CUDA/GPU if available, CPU otherwise
 	
 		Returns:
-		  Nothing
+		- Nothing
 		"""
 		self.to(device)
 		self.train()
@@ -353,45 +335,159 @@ class Net(nn.Module):
 			print(f'\nAccuracy on the {train_total} training samples: {train_acc:0.2f}')
 
 		return train_acc
-
-	def backward(self, outputsF, targets):
-		dend_stateF = torch.sum()
-		nudge = targets - outputsF
-
-	def step(self, lr):
+	
+	def ReLU_derivative(self, x):
+		if x > 0:
+			return 1
+		else:
+			return 0
+	
+	def update_forward_states(self, outF):
 		with torch.no_grad():
-			pass
+			Df_H2 = outF @ self.mlp[4].weight.data
+			Df_H1 = self.hidden_outputs[-1] @ self.mlp[2].weight.data
 
-	def train_model_tempcontrast(self, lr, train_loader, num_epochs=1, verbose=False, device='cpu'):
-		self.to(device)
-		self.eval()
-		self.training_losses = []
+		return Df_H2, Df_H1
 
-		for epoch in tqdm(range(num_epochs)): 
-			for i, data in enumerate(train_loader, 0):
-				inputs, labels = data
-				inputs = inputs.to(device).float()
-				labels = labels.to(device).long()
+	def backward_tempcontrast(self, nudge, Df_H1, Df_H2):
+		with torch.no_grad():
+			outB = self.mlp[-1](self.output_state + nudge)
+			Db_H2 = outB @ self.mlp[4].weight.data
+			nudge_H2 = Db_H2 - Df_H2
+			activity_b_H2 = self.mlp[-3](self.hidden_states[1] + nudge_H2)
+			Db_H1 = activity_b_H2 @ self.mlp[2].weight.data
+			nudge_H1 = Db_H1 - Df_H1
+			activity_b_H1 = self.mlp[1](self.hidden_states[0] + nudge_H1)
+		
+		return nudge_H1, nudge_H2, activity_b_H1, activity_b_H2
 
-				outputsF = self.forward(inputs)
-				error = outputsF - labels
-				self.backward(outputsF, labels)
-				self.step(lr)
+	def step_tempcontrast(self, lr, inputs, nudge_H1, nudge_H2, nudge_out):
+		with torch.no_grad():
+			self.mlp[4].weight.data += lr * self.ReLU_derivative(self.output_state) * torch.outer(nudge_out.squeeze(), self.hidden_outputs[1].squeeze())
+			self.mlp[2].weight.data += -lr * self.ReLU_derivative(self.hidden_state[0]) * torch.outer(nudge_H2.squeeze(), self.hidden_outputs[0].squeeze()) 
+			self.mlp[0].weight.data += -lr * self.ReLU_derivative(self.hidden_state[1]) * torch.outer(nudge_H1.squeeze(), inputs.squeeze())
+
+	def train_model_tempcontrast(self, criterion, lr, train_loader, num_epochs=1, verbose=False, device='cpu'):
+			'''
+			Train model using Target propogation Temporal contrast learning
+
+			Args:
+			- lr (float): Learning rate 
+			- train_loader (torch.utils.data.DataLoader): DataLoader object containing the training data.
+			- num_epochs (int, optional): Number of training epochs. Defaults to 1.
+			- verbose (bool, optional): If True, prints the accuracy on the training samples. Defaults to False.
+			- device (str, optional): Device to use for training. Defaults to 'cpu'.
+
+			Returns:
+			- float: Accuracy on the training samples.
+			'''	
+			self.to(device)
+			self.eval()
+			debug = False
+
+			self.training_losses = []
+			self.reinit()
+
+			self.train_hidden_states = [[] for i in range(len(self.hidden_unit_nums))]
+			self.train_hidden_outputs = [[] for i in range(len(self.hidden_unit_nums))]
+			self.train_output_state = []
+			self.train_processed_output = []
+
+			self.train_labels = []
+
+			for epoch in tqdm(range(num_epochs)): 
+				for i, data in enumerate(train_loader, 0):
+					inputs, labels = data
+					inputs = inputs.to(device).float()
+					labels = labels.to(device).long()
+
+					outF = self.forward(inputs)
+
+					for layer_idx in range(len(self.hidden_unit_nums)):
+						self.train_hidden_states[layer_idx].append(self.hidden_states[layer_idx])
+						self.train_hidden_outputs[layer_idx].append(self.hidden_outputs[layer_idx])
+					self.train_output_state.append(self.output_state)
+					self.train_processed_output.append(self.processed_output)
+
+					# if torch.isnan(outF).any() or torch.isinf(outF).any():
+					# 	print(f"NaN or Inf detected in forward pass at epoch {epoch}, batch {i}")
+					# 	return
+					if debug:
+						if i % 100 == 0:
+							print(f"Epoch {epoch}, Batch {i}, Forward output: {outF.mean().item()}")
+
+					# update forward (pre nudge) states (to get Df)
+					Df_H2, Df_H1 = self.update_forward_states(outF)
+
+					# compute nudge
+					targets = torch.zeros((inputs.shape[0],4))
+					for row in range(len(labels)):
+						col = labels.int()[row]
+						targets[row][col] = 1
+					nudge = targets - outF
+					# if torch.isnan(nudge).any() or torch.isinf(nudge).any():
+					# 	print(f"NaN or Inf detected in nudge at epoch {epoch}, batch {i}")
+					# 	return
+					if debug:
+						if i % 100 == 0:
+							print(f"Epoch {epoch}, Batch {i}, Nudge: {nudge.mean().item()}")
+
+					# update backward (post nudge) states (to get Db)
+					nudge_H1, nudge_H2, activity_b_H1, activity_b_H2 = self.backward_tempcontrast(nudge, Df_H1, Df_H2)
+					# if torch.isnan(Db_H2).any() or torch.isinf(Db_H2).any() or torch.isnan(Db_H1).any() or torch.isinf(Db_H1).any():
+					# 	print(f"NaN or Inf detected in backward pass at epoch {epoch}, batch {i}")
+					# 	return
+					
+					# step (based on Df and Db)
+					self.step_tempcontrast(lr, inputs, nudge_H1, nudge_H2, nudge)
+					# if torch.isnan(self.mlp[4].weight).any() or torch.isinf(self.mlp[4].weight).any() or torch.isnan(self.mlp[2].weight).any() or torch.isinf(self.mlp[2].weight).any():
+					# 	print(f"NaN or Inf detected in weights at epoch {epoch}, batch {i}")
+					# 	return
+
+					# Decide criterion function
+					criterion_function = eval(f"nn.{criterion}()")
+					if criterion == "MSELoss":
+						loss = criterion_function(outF, targets)
+					elif criterion == "CrossEntropyLoss":
+						loss = criterion_function(outF, labels)
+
+					self.train_labels.append(labels)
+
+					self.training_losses.append(loss.item())
+
+			# Concatenate hidden states and outputs within the current batch
+			for layer_idx in range(len(self.hidden_unit_nums)):
+				self.train_hidden_states[layer_idx] = torch.stack(self.train_hidden_states[layer_idx]).squeeze()
+				self.train_hidden_outputs[layer_idx] = torch.stack(self.train_hidden_outputs[layer_idx]).squeeze()
+			self.train_output_state = torch.stack(self.train_output_state).squeeze()
+			self.train_processed_output = torch.stack(self.train_processed_output).squeeze()
+			self.train_labels = torch.stack(self.train_labels)
+
+			train_total, train_acc = self.test(train_loader, device)
+
+			self.final_weights = []
+			self.final_biases = []
+			for layer in self.mlp[::2]:
+				self.final_weights.append(layer.weight.data)
+				if self.use_bias:
+					self.final_biases.append(layer.bias.data)
+
+			if verbose:
+				print(f'\nAccuracy on the {train_total} training samples: {train_acc:0.2f}')
+
+			return train_acc
 	
 	def test_model(self, test_loader, verbose=True, device='cpu'):
 		'''
 		Evaluate performance
 
 		Args:
-		  test_loader: torch.utils.data type
-			Combines the test dataset and sampler, and provides an iterable over the given dataset.
-		  verbose: boolean
-			If True, print statistics
-		  device: string
-			CUDA/GPU if available, CPU otherwise
+		- test_loader (torch.utils.data type): Combines the test dataset and sampler, and provides an iterable over the given dataset.
+		- verbose (boolean): If True, print statistics
+		- device (string): CUDA/GPU if available, CPU otherwise
 
 		Returns:
-		  Nothing
+		- Nothing
 		'''
 		self.to(device)
 		test_total, test_acc = self.test(test_loader, device)
@@ -407,13 +503,11 @@ class Net(nn.Module):
 		Display network summary
 
 		Args:
-		  test_loader: torch.utils.data type
-			Combines the test dataset and sampler, and provides an iterable over the given dataset.
-		  device: string
-			CUDA/GPU if available, CPU otherwise
+		- test_loader (torch.utils.data type): Combines the test dataset and sampler, and provides an iterable over the given dataset.
+		- device (string): CUDA/GPU if available, CPU otherwise
 
 		Returns:
-		  Nothing
+		- Nothing
 		'''
 
 		inputs, labels = next(iter(test_loader))
@@ -477,10 +571,10 @@ class Net(nn.Module):
 		Plot initial and final weights and biases for all layers.
 
 		Args:
-		  Nothing
+		- Nothing
 
 		Returns:
-		  Nothing
+		- Nothing
 		'''
 
 		num_layers = len(self.initial_weights)
@@ -530,14 +624,11 @@ def sample_grid(M=500, x_max=2.0):
 	Helper function to simulate sample meshgrid
   
 	Args:
-	  M: int
-		Size of the constructed tensor with meshgrid
-	  x_max: float
-		Defines range for the set of points
+	- M (int): Size of the constructed tensor with meshgrid
+	- x_max (float): Defines range for the set of points
   
 	Returns:
-	  X_all: torch.tensor
-		Concatenated meshgrid tensor
+	- X_all (torch.tensor): Concatenated meshgrid tensor
 	"""
 	ii, jj = torch.meshgrid(torch.linspace(-x_max, x_max, M),
 							torch.linspace(-x_max, x_max, M),
@@ -548,6 +639,25 @@ def sample_grid(M=500, x_max=2.0):
 	return X_all
 
 def generate_data(K=4, sigma=0.16, N=1000, seed=None, gen=None, display=True):
+	'''
+	Generate spiral dataset for training and testing a neural network.
+
+	Args:
+	- K (int): Number of classes in the dataset. Default is 4.
+	- sigma (float): Standard deviation of the spiral dataset. Default is 0.16.
+	- N (int): Number of samples in the dataset. Default is 1000.
+	- seed (int): Seed value for reproducibility. Default is None.
+	- gen (torch.Generator): Generator object for random number generation. Default is None.
+	- display (bool): Whether to display a scatter plot of the dataset. Default is True.
+
+	Returns:
+	- X_test (torch.Tensor): Test input data.
+	- y_test (torch.Tensor): Test target data.
+	- X_train (torch.Tensor): Train input data.
+	- y_train (torch.Tensor): Train target data.
+	- test_loader (torch.utils.data.DataLoader): DataLoader for test data.
+	- train_loader (torch.utils.data.DataLoader): DataLoader for train data.
+	'''
 
 	# Set seed for reproducibility
 	if seed is not None:
@@ -660,25 +770,34 @@ def main(description, plot, interactive, export, export_file_path, seed):
 
 	label_dict = {'backprop_learned_bias': 'Backprop learned bias',
 			   'backprop_zero_bias': 'Backprop zero bias',
-			   'backprop_fixed_bias': 'Backprop fixed bias'}
+			   'backprop_fixed_bias': 'Backprop fixed bias',
+				'dend_temp_contrast': 'Dendritic Temporal Contrast'}
 	
 	lr_dict = {'backprop_learned_bias': 0.11,
 			   'backprop_zero_bias': 0.01,
-			   'backprop_fixed_bias': 0.10}
+			   'backprop_fixed_bias': 0.10,
+			   'dend_temp_contrast': 0.01}
 	
-	if description == 'backprop_learned_bias':
-		net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=True).to(DEVICE)
-	elif description == 'backprop_zero_bias':
-		net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=False, learn_bias=False).to(DEVICE)
-	elif description == 'backprop_fixed_bias':
-		net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
+	if "backprop" in description: 
+		if description == 'backprop_learned_bias':
+			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=True).to(DEVICE)
+		elif description == 'backprop_zero_bias':
+			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=False, learn_bias=False).to(DEVICE)
+		elif description == 'backprop_fixed_bias':
+			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
 
-	criterion = "MSELoss"
-	optimizer = optim.SGD(net.parameters(), lr=lr_dict[description])
-	num_epochs = 2
-	local_torch_random.manual_seed(data_order_seed)
-	net.train_model_backprop(criterion, optimizer, train_loader, num_epochs=num_epochs, device=DEVICE)
-	test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
+		criterion = "MSELoss"
+		optimizer = optim.SGD(net.parameters(), lr=lr_dict[description])
+		num_epochs = 2
+		local_torch_random.manual_seed(data_order_seed)
+		net.train_model_backprop(criterion, optimizer, train_loader, num_epochs=num_epochs, device=DEVICE)
+		test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
+
+	elif description == "dend_temp_contrast":
+		criterion = "MSELoss"
+		net = Net(nn.ReLU,  X_train.shape[1], [128, 32], num_classes, description=description).to(DEVICE)
+		net.train_model_tempcontrast(criterion, lr_dict[description], train_loader, num_epochs=2, verbose=True, device=DEVICE)
+		test_acc = net.test_model(test_loader, verbose=True, device=DEVICE)
 
 	if plot:
 		net.display_summary(test_loader, test_acc, title=label_dict[description])
