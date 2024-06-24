@@ -139,7 +139,8 @@ class Net(nn.Module):
 		- Nothing
 		"""
 		super(Net, self).__init__()
-		self.input_feature_num = input_feature_num # Save the input size for reshaping later
+		# Save parameters as self variables 
+		self.input_feature_num = input_feature_num
 		self.hidden_unit_nums = hidden_unit_nums
 		self.description = description
 		self.use_bias = use_bias
@@ -337,10 +338,10 @@ class Net(nn.Module):
 		return train_acc
 	
 	def ReLU_derivative(self, x):
-		if x > 0:
-			return 1
-		else:
-			return 0
+		output = torch.ones_like(x)
+		indexes = torch.where(output < 0)
+		output[indexes] = 0
+		return output
 	
 	def update_forward_states(self, outF):
 		with torch.no_grad():
@@ -363,9 +364,14 @@ class Net(nn.Module):
 
 	def step_tempcontrast(self, lr, inputs, nudge_H1, nudge_H2, nudge_out):
 		with torch.no_grad():
-			self.mlp[4].weight.data += lr * self.ReLU_derivative(self.output_state) * torch.outer(nudge_out.squeeze(), self.hidden_outputs[1].squeeze())
-			self.mlp[2].weight.data += -lr * self.ReLU_derivative(self.hidden_state[0]) * torch.outer(nudge_H2.squeeze(), self.hidden_outputs[0].squeeze()) 
-			self.mlp[0].weight.data += -lr * self.ReLU_derivative(self.hidden_state[1]) * torch.outer(nudge_H1.squeeze(), inputs.squeeze())
+			# print(f"output_state post activation size: {self.ReLU_derivative(self.hidden_states[0]).size()}")
+			# print(f"nudge_H2 size: {nudge_H2.size()}")
+			# print(f"hidden_outputs[1] size: {self.hidden_outputs[0].size()}")
+			# print(f"outer prodct size: {torch.outer(nudge_H2.squeeze(), self.hidden_outputs[0].squeeze()) .size()}")
+
+			self.mlp[4].weight.data += lr * self.ReLU_derivative(self.output_state) @ torch.outer(nudge_out.squeeze(), self.hidden_outputs[1].squeeze())
+			self.mlp[2].weight.data += -lr * self.ReLU_derivative(self.hidden_states[1]) @ torch.outer(nudge_H2.squeeze(), self.hidden_outputs[0].squeeze()) 
+			self.mlp[0].weight.data += -lr * self.ReLU_derivative(self.hidden_states[0]) @ torch.outer(nudge_H1.squeeze(), inputs.squeeze())
 
 	def train_model_tempcontrast(self, criterion, lr, train_loader, num_epochs=1, verbose=False, device='cpu'):
 			'''
@@ -409,9 +415,6 @@ class Net(nn.Module):
 					self.train_output_state.append(self.output_state)
 					self.train_processed_output.append(self.processed_output)
 
-					# if torch.isnan(outF).any() or torch.isinf(outF).any():
-					# 	print(f"NaN or Inf detected in forward pass at epoch {epoch}, batch {i}")
-					# 	return
 					if debug:
 						if i % 100 == 0:
 							print(f"Epoch {epoch}, Batch {i}, Forward output: {outF.mean().item()}")
@@ -424,25 +427,17 @@ class Net(nn.Module):
 					for row in range(len(labels)):
 						col = labels.int()[row]
 						targets[row][col] = 1
-					nudge = targets - outF
-					# if torch.isnan(nudge).any() or torch.isinf(nudge).any():
-					# 	print(f"NaN or Inf detected in nudge at epoch {epoch}, batch {i}")
-					# 	return
+					nudge_out = targets - outF
+
 					if debug:
 						if i % 100 == 0:
-							print(f"Epoch {epoch}, Batch {i}, Nudge: {nudge.mean().item()}")
+							print(f"Epoch {epoch}, Batch {i}, Nudge: {nudge_out.mean().item()}")
 
 					# update backward (post nudge) states (to get Db)
-					nudge_H1, nudge_H2, activity_b_H1, activity_b_H2 = self.backward_tempcontrast(nudge, Df_H1, Df_H2)
-					# if torch.isnan(Db_H2).any() or torch.isinf(Db_H2).any() or torch.isnan(Db_H1).any() or torch.isinf(Db_H1).any():
-					# 	print(f"NaN or Inf detected in backward pass at epoch {epoch}, batch {i}")
-					# 	return
+					nudge_H1, nudge_H2, activity_b_H1, activity_b_H2 = self.backward_tempcontrast(nudge_out, Df_H1, Df_H2)
 					
 					# step (based on Df and Db)
-					self.step_tempcontrast(lr, inputs, nudge_H1, nudge_H2, nudge)
-					# if torch.isnan(self.mlp[4].weight).any() or torch.isinf(self.mlp[4].weight).any() or torch.isnan(self.mlp[2].weight).any() or torch.isinf(self.mlp[2].weight).any():
-					# 	print(f"NaN or Inf detected in weights at epoch {epoch}, batch {i}")
-					# 	return
+					self.step_tempcontrast(lr, inputs, nudge_H1, nudge_H2, nudge_out)
 
 					# Decide criterion function
 					criterion_function = eval(f"nn.{criterion}()")
