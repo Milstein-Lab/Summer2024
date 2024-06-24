@@ -27,37 +27,34 @@ def main(description, seed, export, export_file_path):
 	num_classes = 4
 	X_test, y_test, X_train, y_train, test_loader, train_loader = spiral.generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=False)
 
-	loss_history = []
-	learning_rates = np.arange(0.001, 0.2 + 0.001, 0.01)
+	accuracy_history = []
+	learning_rates = np.arange(0.01, 0.03 + 0.002, 0.002)
+	criterion = "MSELoss"
+	num_epochs = 2
 	for i in learning_rates:
 		spiral.set_seed(network_seed)
+		local_torch_random.manual_seed(data_order_seed)
 
-		if 'backprop' in description:
+		if "backprop" in description: 
 			if description == 'backprop_learned_bias':
 				net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=True).to(DEVICE)
 			elif description == 'backprop_zero_bias':
 				net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=False, learn_bias=False).to(DEVICE)
 			elif description == 'backprop_fixed_bias':
 				net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
-
-			criterion = "MSELoss"
-			optimizer = optim.SGD(net.parameters(), lr=i)
-			num_epochs = 2
-			local_torch_random.manual_seed(data_order_seed)
-			loss = net.train_model('backprop', i, criterion, optimizer, train_loader, num_epochs=num_epochs, verbose=True, device=DEVICE)
+			acc = net.train_model('backprop', i, criterion, train_loader, num_epochs=num_epochs, verbose=True, device=DEVICE)
 
 		elif description == "dend_temp_contrast":
-			criterion = "MSELoss"
 			net = Net(nn.ReLU,  X_train.shape[1], [128, 32], num_classes, description=description).to(DEVICE)
-			loss = net.train_model_tempcontrast(criterion, i, train_loader, num_epochs=2, verbose=True, device=DEVICE)
+			acc = net.train_model('dend_temp_contrast', i, criterion, train_loader, num_epochs=num_epochs, verbose=True, device=DEVICE)
 
-		loss_history.append(loss)
+		accuracy_history.append(acc)
 		print(f'Learning Rate: {i}\n')
 			
 	fig = plt.figure()
-	plt.plot(learning_rates, loss_history)
-	for i, txt in enumerate(loss_history):
-		plt.annotate(f'{learning_rates[i]:.2f}', (learning_rates[i], txt)) 
+	plt.plot(learning_rates, accuracy_history)
+	for i, txt in enumerate(accuracy_history):
+		plt.annotate(f'{learning_rates[i]:.3f}', (learning_rates[i], txt)) 
 	plt.xlabel('Learning Rate')
 	plt.ylabel('Accuracy')
 	plt.title(f'Learning Rate Screen for {label_dict[description]}')

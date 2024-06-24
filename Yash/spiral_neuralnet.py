@@ -148,13 +148,18 @@ class Net(nn.Module):
 		self.learn_bias = learn_bias
 
 		self.forward_soma_state = {} # states of all layers pre activation
-		self.forward_activity = {} # activities of all layers post activation
+		self.forward_activity = {} # activities of all layers post ReLU
 		self.weights = {}
 		self.biases = {}
 		self.initial_weights = {}
 		self.initial_biases = {}
 		self.activation_functions = {}
 		self.layers = {}
+
+		self.forward_dend_state = {}
+		self.backward_dend_state = {}
+		self.nudges = {}
+		self.backward_activity = {}
 
 		self.hidden_activations = []
 
@@ -255,12 +260,13 @@ class Net(nn.Module):
 		acc = 100 * correct / total
 		return total, acc
 	
-	def train_backprop(self, optimizer, loss):
+	def train_backprop(self, loss, lr):
+		optimizer = optim.SGD(self.parameters(), lr=lr)
 		optimizer.zero_grad()
 		loss.backward()
 		optimizer.step()
 	
-	def train_model(self, learning_rule, lr, criterion, optimizer, train_loader, num_epochs=1, verbose=False, device='cpu'):
+	def train_model(self, learning_rule, lr, criterion, train_loader, num_epochs=1, verbose=False, device='cpu'):
 		"""
 		Train model with backprop, accumulate loss, evaluate performance. 
 	
@@ -310,7 +316,7 @@ class Net(nn.Module):
 				if criterion == "MSELoss":
 					targets = torch.zeros((inputs.shape[0],4))
 					for row in range(len(labels)):
-						col = labels.int()[row]
+						col = labels[row].int()
 						targets[row][col] = 1
 					loss = criterion_function(outputs, targets)
 				elif criterion == "CrossEntropyLoss":
@@ -319,7 +325,9 @@ class Net(nn.Module):
 				self.train_labels.append(labels)
 
 				if learning_rule == 'backprop':
-					self.train_backprop(optimizer, loss)
+					self.train_backprop(loss, lr)
+				elif learning_rule == 'dend_temp_contrast':
+					self.train_dend_temp_contrast(targets, lr)
 
 				self.training_losses.append(loss.item())
 
@@ -349,135 +357,49 @@ class Net(nn.Module):
 		indexes = torch.where(output < 0)
 		output[indexes] = 0
 		return output
-	
-	def update_forward_states(self, outF):
-		with torch.no_grad():
-			Df_H2 = outF @ self.mlp[4].weight.data
-			Df_H1 = self.hidden_outputs[-1] @ self.mlp[2].weight.data
 
-		return Df_H2, Df_H1
+	def step_dend_temp_contrast(self, lr):
+		# TODO add beta scalars 
 
-	def backward_tempcontrast(self, nudge, Df_H1, Df_H2):
-		with torch.no_grad():
-			outB = self.mlp[-1](self.output_state + nudge)
-			Db_H2 = outB @ self.mlp[4].weight.data
-			nudge_H2 = Db_H2 - Df_H2
-			activity_b_H2 = self.mlp[-3](self.hidden_states[1] + nudge_H2)
-			Db_H1 = activity_b_H2 @ self.mlp[2].weight.data
-			nudge_H1 = Db_H1 - Df_H1
-			activity_b_H1 = self.mlp[1](self.hidden_states[0] + nudge_H1)
-		
-		return nudge_H1, nudge_H2, activity_b_H1, activity_b_H2
+		prev_layer = 'Input'
+		for layer in self.layers.keys():
+			local_loss = (self.nudges[layer] * self.ReLU_derivative(self.forward_soma_state[layer])).squeeze()
+			self.weights[layer].data += lr * torch.outer(local_loss, self.forward_activity[prev_layer].squeeze())
+			prev_layer = layer
 
-	def step_tempcontrast(self, lr, inputs, nudge_H1, nudge_H2, nudge_out):
-		with torch.no_grad():
-			# print(f"output_state post activation size: {self.ReLU_derivative(self.hidden_states[0]).size()}")
-			# print(f"nudge_H2 size: {nudge_H2.size()}")
-			# print(f"hidden_outputs[1] size: {self.hidden_outputs[0].size()}")
-			# print(f"outer prodct size: {torch.outer(nudge_H2.squeeze(), self.hidden_outputs[0].squeeze()) .size()}")
+	def train_dend_temp_contrast(self, targets, lr):
+		'''
+		Train model using Target propogation Temporal contrast learning
 
-			self.mlp[4].weight.data += lr * self.ReLU_derivative(self.output_state) @ torch.outer(nudge_out.squeeze(), self.hidden_outputs[1].squeeze())
-			self.mlp[2].weight.data += -lr * self.ReLU_derivative(self.hidden_states[1]) @ torch.outer(nudge_H2.squeeze(), self.hidden_outputs[0].squeeze()) 
-			self.mlp[0].weight.data += -lr * self.ReLU_derivative(self.hidden_states[0]) @ torch.outer(nudge_H1.squeeze(), inputs.squeeze())
+		Args:
+		- label (torch tensor): Train label
+		- lr (float): Learning rate 
+		- verbose (bool, optional): If True, prints the accuracy on the training samples. Defaults to False.
 
-	def train_model_tempcontrast(self, criterion, lr, train_loader, num_epochs=1, verbose=False, device='cpu'):
-			'''
-			Train model using Target propogation Temporal contrast learning
+		Returns:
+		- float: Accuracy on the training samples.
+		'''	
+		# TODO implement bias learning
 
-			Args:
-			- lr (float): Learning rate 
-			- train_loader (torch.utils.data.DataLoader): DataLoader object containing the training data.
-			- num_epochs (int, optional): Number of training epochs. Defaults to 1.
-			- verbose (bool, optional): If True, prints the accuracy on the training samples. Defaults to False.
-			- device (str, optional): Device to use for training. Defaults to 'cpu'.
+		self.eval()
+		debug = False
 
-			Returns:
-			- float: Accuracy on the training samples.
-			'''	
-			self.to(device)
-			self.eval()
-			debug = False
+		prev_layer = None
+		reverse_layers = list(self.layers.keys())[::-1]
 
-			self.training_losses = []
-			self.reinit()
+		for layer in reverse_layers:
+			if layer == 'Out':
+				self.nudges[layer] = targets - self.forward_activity['Out']
+			else:
+				self.forward_dend_state[layer] = self.forward_activity[prev_layer] @ self.weights[prev_layer]
+				self.backward_dend_state[layer] = self.backward_activity[prev_layer] @ self.weights[prev_layer]
+				self.nudges[layer] = self.backward_dend_state[layer] - self.forward_dend_state[layer]
 
-			self.train_hidden_states = [[] for i in range(len(self.hidden_unit_nums))]
-			self.train_hidden_outputs = [[] for i in range(len(self.hidden_unit_nums))]
-			self.train_output_state = []
-			self.train_processed_output = []
+			self.backward_activity[layer] = self.activation_functions[layer](self.forward_soma_state[layer] + self.nudges[layer])
+			prev_layer = layer
 
-			self.train_labels = []
-
-			for epoch in tqdm(range(num_epochs)): 
-				for i, data in enumerate(train_loader, 0):
-					inputs, labels = data
-					inputs = inputs.to(device).float()
-					labels = labels.to(device).long()
-
-					outF = self.forward(inputs)
-
-					for layer_idx in range(len(self.hidden_unit_nums)):
-						self.train_hidden_states[layer_idx].append(self.hidden_states[layer_idx])
-						self.train_hidden_outputs[layer_idx].append(self.hidden_outputs[layer_idx])
-					self.train_output_state.append(self.output_state)
-					self.train_processed_output.append(self.processed_output)
-
-					if debug:
-						if i % 100 == 0:
-							print(f"Epoch {epoch}, Batch {i}, Forward output: {outF.mean().item()}")
-
-					# update forward (pre nudge) states (to get Df)
-					Df_H2, Df_H1 = self.update_forward_states(outF)
-
-					# compute nudge
-					targets = torch.zeros((inputs.shape[0],4))
-					for row in range(len(labels)):
-						col = labels.int()[row]
-						targets[row][col] = 1
-					nudge_out = targets - outF
-
-					if debug:
-						if i % 100 == 0:
-							print(f"Epoch {epoch}, Batch {i}, Nudge: {nudge_out.mean().item()}")
-
-					# update backward (post nudge) states (to get Db)
-					nudge_H1, nudge_H2, activity_b_H1, activity_b_H2 = self.backward_tempcontrast(nudge_out, Df_H1, Df_H2)
-					
-					# step (based on Df and Db)
-					self.step_tempcontrast(lr, inputs, nudge_H1, nudge_H2, nudge_out)
-
-					# Decide criterion function
-					criterion_function = eval(f"nn.{criterion}()")
-					if criterion == "MSELoss":
-						loss = criterion_function(outF, targets)
-					elif criterion == "CrossEntropyLoss":
-						loss = criterion_function(outF, labels)
-
-					self.train_labels.append(labels)
-
-					self.training_losses.append(loss.item())
-
-			# Concatenate hidden states and outputs within the current batch
-			for layer_idx in range(len(self.hidden_unit_nums)):
-				self.train_hidden_states[layer_idx] = torch.stack(self.train_hidden_states[layer_idx]).squeeze()
-				self.train_hidden_outputs[layer_idx] = torch.stack(self.train_hidden_outputs[layer_idx]).squeeze()
-			self.train_output_state = torch.stack(self.train_output_state).squeeze()
-			self.train_processed_output = torch.stack(self.train_processed_output).squeeze()
-			self.train_labels = torch.stack(self.train_labels)
-
-			train_total, train_acc = self.test(train_loader, device)
-
-			self.final_weights = []
-			self.final_biases = []
-			for layer in self.mlp[::2]:
-				self.final_weights.append(layer.weight.data)
-				if self.use_bias:
-					self.final_biases.append(layer.bias.data)
-
-			if verbose:
-				print(f'\nAccuracy on the {train_total} training samples: {train_acc:0.2f}')
-
-			return train_acc
+		# step (based on Df and Db)
+		self.step_dend_temp_contrast(lr)
 	
 	def test_model(self, test_loader, verbose=True, device='cpu'):
 		'''
@@ -777,8 +699,11 @@ def main(description, plot, interactive, export, export_file_path, seed):
 	lr_dict = {'backprop_learned_bias': 0.11,
 			   'backprop_zero_bias': 0.01,
 			   'backprop_fixed_bias': 0.10,
-			   'dend_temp_contrast': 0.01}
+			   'dend_temp_contrast': 0.016}
 	
+	criterion = "MSELoss"
+	num_epochs = 2
+	local_torch_random.manual_seed(data_order_seed)
 	if "backprop" in description: 
 		if description == 'backprop_learned_bias':
 			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=True).to(DEVICE)
@@ -786,19 +711,13 @@ def main(description, plot, interactive, export, export_file_path, seed):
 			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=False, learn_bias=False).to(DEVICE)
 		elif description == 'backprop_fixed_bias':
 			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
-
-		criterion = "MSELoss"
-		optimizer = optim.SGD(net.parameters(), lr=lr_dict[description])
-		num_epochs = 2
-		local_torch_random.manual_seed(data_order_seed)
-		net.train_model('backprop', lr_dict[description], criterion, optimizer, train_loader, num_epochs=num_epochs, device=DEVICE)
-		test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
+		net.train_model('backprop', lr_dict[description], criterion, train_loader, num_epochs=num_epochs, device=DEVICE)
 
 	elif description == "dend_temp_contrast":
-		criterion = "MSELoss"
 		net = Net(nn.ReLU,  X_train.shape[1], [128, 32], num_classes, description=description).to(DEVICE)
-		net.train_model_tempcontrast(criterion, lr_dict[description], train_loader, num_epochs=2, verbose=True, device=DEVICE)
-		test_acc = net.test_model(test_loader, verbose=True, device=DEVICE)
+		net.train_model('dend_temp_contrast', lr_dict[description], criterion, train_loader, num_epochs=num_epochs, verbose=False, device=DEVICE)
+	
+	test_acc = net.test_model(test_loader, verbose=True, device=DEVICE)
 
 	if plot:
 		net.display_summary(test_loader, test_acc, title=label_dict[description])
