@@ -44,7 +44,7 @@ def main(description, seed, export, export_file_path):
 			optimizer = optim.SGD(net.parameters(), lr=i)
 			num_epochs = 2
 			local_torch_random.manual_seed(data_order_seed)
-			loss = net.train_model_backprop(criterion, optimizer, train_loader, num_epochs=num_epochs, verbose=True, device=DEVICE)
+			loss = net.train_model('backprop', i, criterion, optimizer, train_loader, num_epochs=num_epochs, verbose=True, device=DEVICE)
 
 		elif description == "dend_temp_contrast":
 			criterion = "MSELoss"

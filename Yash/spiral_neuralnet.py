@@ -142,50 +142,64 @@ class Net(nn.Module):
 		# Save parameters as self variables 
 		self.input_feature_num = input_feature_num
 		self.hidden_unit_nums = hidden_unit_nums
+		self.output_feature_num = output_feature_num
 		self.description = description
 		self.use_bias = use_bias
 		self.learn_bias = learn_bias
 
-		self.hidden_states = []
-		self.hidden_outputs = []
-		self.output_state = None
-		self.processed_output = None
+		self.forward_soma_state = {} # states of all layers pre activation
+		self.forward_activity = {} # activities of all layers post activation
+		self.weights = {}
+		self.biases = {}
+		self.initial_weights = {}
+		self.initial_biases = {}
+		self.activation_functions = {}
+		self.layers = {}
 
 		self.hidden_activations = []
 
 		layers = []
 		prev_size = input_feature_num
-		for hidden_size in hidden_unit_nums:
-			layers.append(nn.Linear(prev_size, hidden_size, bias=use_bias))
+		for i, hidden_size in enumerate(hidden_unit_nums):
+			layer = nn.Linear(prev_size, hidden_size, bias=use_bias)
+			layers.append(layer)
+			key = f'H{i+1}'
+			self.layers[key] = layer
+
+			self.weights[key] = layer.weight
+			if use_bias:
+				self.biases[key] = layer.bias
+				if not learn_bias:
+					layer.bias.requires_grad = False
+			else:
+				self.biases[key] = torch.zeros(hidden_size)
+			self.initial_weights[key] = layer.weight.data.clone()
+			self.initial_biases[key] = layer.bias.data.clone()
+
 			act_layer = actv()
 			layers.append(act_layer)
-			self.hidden_activations.append(act_layer)
+			self.activation_functions[key] = act_layer
+			
 			prev_size = hidden_size
 
-		self.output_state_layer = []
-		self.output_state_layer.append(nn.Linear(prev_size, output_feature_num, bias=use_bias))
-		layers.append(self.output_state_layer[0]) # Output state layer
+		out_layer = nn.Linear(prev_size, output_feature_num, bias=use_bias)
+		self.layers['Out'] = out_layer
+		layers.append(out_layer) # Output state layer
+		self.weights['Out'] = out_layer.weight
+		if use_bias:
+			self.biases['Out'] = out_layer.bias
+			if not learn_bias:
+					out_layer.bias.requires_grad = False
+		else:
+			self.biases['Out'] = torch.zeros(output_feature_num)
+		self.initial_weights['Out'] = out_layer.weight.data.clone()
+		self.initial_biases['Out'] = out_layer.bias.data.clone()
 
 		last_layer = actv()
 		layers.append(last_layer) # ReLU after output state layer
-		self.last_activation = []
-		self.last_activation.append(last_layer)
+		self.activation_functions['Out'] = last_layer
 
 		self.mlp = nn.Sequential(*layers)
-		
-
-		# Make the weights not learn 
-		if not learn_bias and use_bias:
-			for layer in self.mlp:
-				if isinstance(layer, nn.Linear):
-					layer.bias.requires_grad = False
-
-		self.initial_weights = []
-		self.initial_biases = []
-		for layer in self.mlp[::2]:
-			self.initial_weights.append(layer.weight.data.clone())
-			if self.use_bias:
-				self.initial_biases.append(layer.bias.data.clone())
 
 	def forward(self, x, store=True):
 		"""
@@ -200,26 +214,19 @@ class Net(nn.Module):
 		"""
 		
 		if store:
-			self.reinit()
+			self.forward_activity['Input'] = x.detach().clone()
 
-		for layer in self.mlp:
+		for key, layer in self.layers.items():
 			x = layer(x)
 			if store:
-				if isinstance(layer, nn.Linear):
-					if layer in self.output_state_layer:
-						self.output_state = x.detach()  # State of the last layer before activation
-					else:
-						self.hidden_states.append(x.detach())  # Store state of hidden layers before activation 
-				elif layer in self.hidden_activations:
-					self.hidden_outputs.append(x.detach()) # Store state of hidden layers after activation
-				elif layer in self.last_activation:
-					self.processed_output = x.detach()  # Output of the last layer after activation
+				self.forward_soma_state[key] = x.detach().clone()
+			
+			x = self.activation_functions[key](x)
+
+			if store:
+				self.forward_activity[key] = x.detach().clone()
 		
 		return x
-	
-	def reinit(self):
-		self.hidden_states = [] 
-		self.hidden_outputs = []
 	
 	def test(self, data_loader, device='cpu'):
 		"""
@@ -248,11 +255,18 @@ class Net(nn.Module):
 		acc = 100 * correct / total
 		return total, acc
 	
-	def train_model_backprop(self, criterion, optimizer, train_loader, num_epochs=1, verbose=False, device='cpu'):
+	def train_backprop(self, optimizer, loss):
+		optimizer.zero_grad()
+		loss.backward()
+		optimizer.step()
+	
+	def train_model(self, learning_rule, lr, criterion, optimizer, train_loader, num_epochs=1, verbose=False, device='cpu'):
 		"""
 		Train model with backprop, accumulate loss, evaluate performance. 
 	
 		Args:
+		- learning_rule (string): Learning rule to train model
+		- lr (float): Learning rate
 		- criterion (torch.nn type): Loss function
 		- optimizer (torch.optim type): Implements Adam or MSELoss algorithm.
 		- train_loader (torch.utils.data type): Combines the train dataset and sampler, and provides an iterable over the given dataset.
@@ -267,12 +281,13 @@ class Net(nn.Module):
 		self.to(device)
 		self.train()
 		self.training_losses = []
-		self.reinit()
 
-		self.train_hidden_states = [[] for i in range(len(self.hidden_unit_nums))]
-		self.train_hidden_outputs = [[] for i in range(len(self.hidden_unit_nums))]
-		self.train_output_state = []
-		self.train_processed_output = []
+		self.forward_soma_state_train_history = {}
+		self.forward_activity_train_history = {} 
+		self.forward_activity_train_history['Input'] = []
+		for key, layer in self.layers.items():
+			self.forward_soma_state_train_history[key] = []
+			self.forward_activity_train_history[key] = []
 
 		self.train_labels = []
 
@@ -283,16 +298,12 @@ class Net(nn.Module):
 				inputs = inputs.to(device).float()
 				labels = labels.to(device).long()
 
-				# Zero the parameter gradients
-				optimizer.zero_grad()
-
 				# forward + backward + optimize
 				outputs = self.forward(inputs)
-				for layer_idx in range(len(self.hidden_unit_nums)):
-					self.train_hidden_states[layer_idx].append(self.hidden_states[layer_idx])
-					self.train_hidden_outputs[layer_idx].append(self.hidden_outputs[layer_idx])
-				self.train_output_state.append(self.output_state)
-				self.train_processed_output.append(self.processed_output)
+				self.forward_activity_train_history['Input'].append(self.forward_activity['Input'])
+				for key, layer in self.layers.items():
+					self.forward_soma_state_train_history[key].append(self.forward_soma_state[key])
+					self.forward_activity_train_history[key].append(self.forward_activity[key])
 
 				# Decide criterion function
 				criterion_function = eval(f"nn.{criterion}()")
@@ -307,17 +318,14 @@ class Net(nn.Module):
 					
 				self.train_labels.append(labels)
 
-				loss.backward()
-				optimizer.step()
+				if learning_rule == 'backprop':
+					self.train_backprop(optimizer, loss)
 
 				self.training_losses.append(loss.item())
 
-		# Concatenate hidden states and outputs within the current batch
-		for layer_idx in range(len(self.hidden_unit_nums)):
-			self.train_hidden_states[layer_idx] = torch.stack(self.train_hidden_states[layer_idx]).squeeze()
-			self.train_hidden_outputs[layer_idx] = torch.stack(self.train_hidden_outputs[layer_idx]).squeeze()
-		self.train_output_state = torch.stack(self.train_output_state).squeeze()
-		self.train_processed_output = torch.stack(self.train_processed_output).squeeze()
+		for key, layer in self.layers.items():
+			self.forward_soma_state_train_history[key] = torch.stack(self.forward_soma_state_train_history[key]).squeeze()
+			self.forward_activity_train_history[key] = torch.stack(self.forward_activity_train_history[key]).squeeze()
 		self.train_labels = torch.stack(self.train_labels)
 		
 		self.eval()
@@ -325,12 +333,11 @@ class Net(nn.Module):
 		train_total, train_acc = self.test(train_loader, device)
 		self.train_acc = train_acc
 
-		self.final_weights = []
-		self.final_biases = []
-		for layer in self.mlp[::2]:
-			self.final_weights.append(layer.weight.data)
-			if self.use_bias:
-				self.final_biases.append(layer.bias.data)
+		self.final_weights = {}
+		self.final_biases = {}
+		for key, layer in self.layers.items():
+			self.final_weights[key] = layer.weight.data.clone()
+			self.final_biases[key] = layer.bias.data.clone()
 
 		if verbose:
 			print(f'\nAccuracy on the {train_total} training samples: {train_acc:0.2f}')
@@ -493,6 +500,40 @@ class Net(nn.Module):
 		self.test_acc = test_acc
 		return test_acc
 	
+	def get_decision_map(self, X_test, y_test, K, DEVICE='cpu', M=500, eps=1e-3):
+		"""
+		Helper function to plot decision map
+	
+		Args:
+		DEVICE: cpu or gpu
+			Device type
+		X_test: torch.tensor
+			Test data
+		y_test: torch.tensor
+			Labels of the test data
+		M: int
+			Size of the constructed tensor with meshgrid
+		x_max: float
+			Defines range for the set of points
+		eps: float
+			Decision threshold
+	
+		Returns:
+		Nothing
+		"""
+		X_all = sample_grid()
+		y_pred = self.forward(X_all.to(DEVICE), store=False).cpu()
+
+		decision_map = torch.argmax(y_pred, dim=1)
+
+		for i in range(len(X_test)):
+			indices = (X_all[:, 0] - X_test[i, 0])**2 + (X_all[:, 1] - X_test[i, 1])**2 < eps
+			decision_map[indices] = (K + y_test[i]).long()
+
+		decision_map = decision_map.view(M, M)
+
+		return decision_map.T
+
 	def display_summary(self, test_loader, test_acc, title=None):
 		'''
 		Display network summary
@@ -507,59 +548,65 @@ class Net(nn.Module):
 
 		inputs, labels = next(iter(test_loader))
 
-		class_averaged_hidden_layers = []
-		sorted_indices_layers = []
-		for hidden_layer_index in range(len(self.hidden_outputs)):
-			class_averaged_hidden = torch.empty((self.processed_output.shape[1], self.hidden_outputs[hidden_layer_index].shape[1]))
-			for label in torch.arange(self.processed_output.shape[1]):
+		class_averaged_activity = {}
+		sorted_indices_layers = {}
+		for key, activity in self.forward_activity.items():
+			this_class_averaged_activity = torch.empty((self.output_feature_num, self.forward_activity[key].shape[1]))
+			for label in torch.arange(self.output_feature_num):
 				indexes = torch.where(labels == label)
-				class_averaged_hidden[label,:] = torch.mean(self.hidden_outputs[hidden_layer_index][indexes], dim=0)
+				this_class_averaged_activity[label,:] = torch.mean(activity[indexes], dim=0)
 
-			max_indices = class_averaged_hidden.argmax(dim=0)
-			sorted_indices = max_indices.argsort()
+			max_indices = this_class_averaged_activity.argmax(dim=0)
+			if key == 'Out':
+				this_sorted_indices = torch.arange(self.output_feature_num)
+			else:
+				this_sorted_indices = max_indices.argsort()
 
-			class_averaged_hidden_layers.append(class_averaged_hidden)
-			sorted_indices_layers.append(sorted_indices)
+			class_averaged_activity[key] = this_class_averaged_activity
+			sorted_indices_layers[key] = this_sorted_indices
 
-		class_averaged_output = torch.empty((self.processed_output.shape[1], self.processed_output.shape[1]))
-		for labelO in torch.arange(self.processed_output.shape[1]):
-			indexesO = torch.where(labels == labelO)
-			class_averaged_output[labelO,:] = torch.mean(self.processed_output[indexesO], dim=0)
-			
-		fig, axes = plt.subplots(nrows=2, ncols=2, figsize=(8, 6))
+		num_layers = len(self.hidden_unit_nums)+1
+		fig, axes = plt.subplots(nrows=2, ncols=num_layers, figsize=(3*num_layers, 6))
 
-		for i, (class_averaged_hidden, sorted_indices) in enumerate(zip(class_averaged_hidden_layers, sorted_indices_layers)):
-			imH = axes[0][i].imshow(class_averaged_hidden[:,sorted_indices].T, aspect='auto', interpolation='none')
-			axes[0][i].set_title(f'Class Averaged Hidden Layer {i+1}')
+		for i, key in enumerate(self.layers):
+			this_class_averaged_activity = class_averaged_activity[key]
+			this_sorted_indices = sorted_indices_layers[key]
+			imH = axes[0][i].imshow(this_class_averaged_activity[:,this_sorted_indices].T, aspect='auto', interpolation='none')
+			if key == 'Out':
+				axes[0][i].set_title(f'Output Layer')
+				axes[0][i].set_yticks(range(this_class_averaged_activity.shape[1]))
+				axes[0][i].set_yticklabels(range(this_class_averaged_activity.shape[1]))
+			else:
+				axes[0][i].set_title(f'Hidden Layer {i+1}')
 			axes[0][i].set_xlabel('Label')
 			axes[0][i].set_ylabel('Neuron')
 			fig.colorbar(imH, ax=axes[0][i])
 
-			axes[0][i].set_xticks(range(class_averaged_hidden.shape[0]))
-			axes[0][i].set_xticklabels(range(class_averaged_hidden.shape[0]))
+			axes[0][i].set_xticks(range(this_class_averaged_activity.shape[0]))
+			axes[0][i].set_xticklabels(range(this_class_averaged_activity.shape[0]))
 
-		imO = axes[1][0].imshow(class_averaged_output.T, aspect='auto')
-		axes[1][0].set_title(f'Class Averaged Output')
-		axes[1][0].set_xlabel('Label')
-		axes[1][0].set_ylabel('Neuron')
-		fig.colorbar(imO, ax=axes[1][0])
+		axes[1][0].plot(self.training_losses, label=f"Test Accuracy: {test_acc}")
+		axes[1][0].set_xlabel('Train Steps')
+		axes[1][0].set_ylabel('Training Loss')
+		axes[1][0].legend(loc='best', frameon=False)
 
-		axes[1][0].set_xticks(range(class_averaged_output.shape[0]))
-		axes[1][0].set_xticklabels(range(class_averaged_output.shape[0]))
-		axes[1][0].set_yticks(range(class_averaged_output.shape[1]))
-		axes[1][0].set_yticklabels(range(class_averaged_output.shape[1]))
+		map = self.get_decision_map(inputs, labels, self.output_feature_num)
 
-		axes[1][1].plot(self.training_losses, label=f"Test Accuracy: {test_acc}")
-		axes[1][1].set_xlabel('Batch')
-		axes[1][1].set_ylabel('Training Loss')
-		axes[1][1].legend(loc='best', frameon=False)
+		axes[1][1].imshow(map, extent=[-2, 2, -2, 2], cmap='jet', origin='lower')
+		axes[1][1].set_xlabel('x1')
+		axes[1][1].set_ylabel('x2')
+		axes[1][1].set_title('Predictions')
+
+		for j in range(2,num_layers):
+			axes[1][j].axis('off')
 
 		if title is not None:
-			fig.suptitle(title)
+			fig.suptitle(f'Class Averaged Activity - {title}')
+		else:
+			fig.suptitle('Class Averaged Activity')
+
 		fig.tight_layout()
 		fig.show()
-
-		return axes
 
 	def plot_params(self, title=None):
 		'''
@@ -572,41 +619,40 @@ class Net(nn.Module):
 		- Nothing
 		'''
 
-		num_layers = len(self.initial_weights)
-		fig, axes = plt.subplots(nrows=num_layers, ncols=2, figsize=(8, 2*num_layers))
+		num_layers = len(self.layers)
+		fig, axes = plt.subplots(nrows=2, ncols=num_layers, figsize=(3*num_layers, 6))
 
-		for i, (initialW, finalW) in enumerate(zip(self.initial_weights, self.final_weights)):
-			iw = initialW.flatten()
-			fw = finalW.flatten()
+		for i, key in enumerate(self.layers):
+			iw = self.initial_weights[key].flatten()
+			fw = self.final_weights[key].flatten()
 
-			axes[i][0].hist([iw, fw], bins=30, label=['Initial Weights', 'Final Weights'])
+			axes[0][i].hist([iw, fw], bins=30, label=['Initial Weights', 'Final Weights'])
 
-			if (i == len(self.initial_weights)-1):
-				axes[i][0].set_title('Output Layer Weights')
+			if key == 'Out':
+				axes[0][i].set_title('Output Layer')
 			else:
-				axes[i][0].set_title(f'Hidden Layer {i+1} Weights')
+				axes[0][i].set_title(f'Hidden Layer {i+1}')
 
-			axes[i][0].set_xlabel("Weight Value")
-			axes[i][0].set_ylabel("Frequency")
-		axes[0][0].legend()
+			if i == 0:
+				axes[0][0].legend()
+				axes[0][0].set_ylabel(f'Weights\nFrequency')
+			axes[0][i].set_xlabel("Weight Value")
 
-		if self.use_bias:
-			for i, (initialB, finalB) in enumerate(zip(self.initial_biases, self.final_biases)):
-				ib = initialB.flatten()
-				fb = finalB.flatten()
 
-				axes[i][1].hist([ib, fb], bins=30, label=['Initial Biases', 'Final Biases'])
+			ib = self.initial_biases[key].flatten()
+			fb = self.final_biases[key].flatten()
 
-				if (i == len(self.initial_biases)-1):
-					axes[i][1].set_title('Output Layer Biases')
-				else:
-					axes[i][1].set_title(f'Hidden Layer {i+1} Biases')
+			axes[1][i].hist([ib, fb], bins=30, label=['Initial Biases', 'Final Biases'])
 
-				axes[i][1].set_xlabel("Bias Value")
-				axes[i][1].set_ylabel("Frequency")
-			axes[i][1].legend()
-		else:
-			axes[0][1].set_title('Biases are not used in this network')
+			if key == 'Out':
+				axes[1][i].set_title('Output Layer')
+			else:
+				axes[1][i].set_title(f'Hidden Layer {i+1}')
+
+			if i == 0:
+				axes[1][0].legend()
+				axes[1][0].set_ylabel(f'Biases\nFrequency')
+			axes[1][i].set_xlabel("Bias Value")				
 			
 		if title is not None:
 			fig.suptitle(title)
@@ -702,46 +748,6 @@ def generate_data(K=4, sigma=0.16, N=1000, seed=None, gen=None, display=True):
 	
 	return X_test, y_test, X_train, y_train, test_loader, train_loader
 
-def plot_decision_map(net, DEVICE, X_test, y_test, K, title=None, M=500, x_max=2.0, eps=1e-3):
-	"""
-	Helper function to plot decision map
-  
-	Args:
-	  net: network object
-		Trained network
-	  DEVICE: cpu or gpu
-	  	Device type
-	  X_test: torch.tensor
-		Test data
-	  y_test: torch.tensor
-		Labels of the test data
-	  M: int
-		Size of the constructed tensor with meshgrid
-	  x_max: float
-		Defines range for the set of points
-	  eps: float
-		Decision threshold
-  
-	Returns:
-	  Nothing
-	"""
-	X_all = sample_grid()
-	y_pred = net.forward(X_all.to(DEVICE), store=False).cpu()
-
-	decision_map = torch.argmax(y_pred, dim=1)
-
-	for i in range(len(X_test)):
-		indices = (X_all[:, 0] - X_test[i, 0])**2 + (X_all[:, 1] - X_test[i, 1])**2 < eps
-		decision_map[indices] = (K + y_test[i]).long()
-
-	decision_map = decision_map.view(M, M)
-	fig = plt.figure()
-	plt.imshow(decision_map.T, extent=[-x_max, x_max, -x_max, x_max], cmap='jet', origin='lower')
-	plt.xlabel('x1')
-	plt.ylabel('x2')
-	plt.title(f'{title} Classified Spiral Data Set')
-	fig.show()
-
 
 @click.command()
 @click.option('--description', required=True, type=str, default='backprop_learned_bias')
@@ -785,7 +791,7 @@ def main(description, plot, interactive, export, export_file_path, seed):
 		optimizer = optim.SGD(net.parameters(), lr=lr_dict[description])
 		num_epochs = 2
 		local_torch_random.manual_seed(data_order_seed)
-		net.train_model_backprop(criterion, optimizer, train_loader, num_epochs=num_epochs, device=DEVICE)
+		net.train_model('backprop', lr_dict[description], criterion, optimizer, train_loader, num_epochs=num_epochs, device=DEVICE)
 		test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
 
 	elif description == "dend_temp_contrast":
@@ -797,7 +803,6 @@ def main(description, plot, interactive, export, export_file_path, seed):
 	if plot:
 		net.display_summary(test_loader, test_acc, title=label_dict[description])
 		net.plot_params(title=label_dict[description])
-		plot_decision_map(net, DEVICE, X_test, y_test, num_classes, title=label_dict[description])
 
 	if export:
 		if os.path.isfile(export_file_path):
