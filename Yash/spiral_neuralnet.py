@@ -224,12 +224,12 @@ class Net(nn.Module):
 		for key, layer in self.layers.items():
 			x = layer(x)
 			if store:
-				self.forward_soma_state[key] = x.detach().clone()
+				self.forward_soma_state[key] = x.detach().clone() # Before ReLU
 			
 			x = self.activation_functions[key](x)
 
 			if store:
-				self.forward_activity[key] = x.detach().clone()
+				self.forward_activity[key] = x.detach().clone() # After ReLU
 		
 		return x
 	
@@ -361,11 +361,14 @@ class Net(nn.Module):
 	def step_dend_temp_contrast(self, lr):
 		# TODO add beta scalars 
 
-		prev_layer = 'Input'
-		for layer in self.layers.keys():
-			local_loss = (self.nudges[layer] * self.ReLU_derivative(self.forward_soma_state[layer])).squeeze()
-			self.weights[layer].data += lr * torch.outer(local_loss, self.forward_activity[prev_layer].squeeze())
-			prev_layer = layer
+		with torch.no_grad():
+			prev_layer = 'Input'
+			for layer in self.layers.keys():
+				local_loss = (self.nudges[layer] * self.ReLU_derivative(self.forward_soma_state[layer])).squeeze()
+				self.weights[layer].data += lr * torch.outer(local_loss, self.forward_activity[prev_layer].squeeze())
+				if self.use_bias and self.learn_bias:
+					self.biases[layer].data += lr * local_loss
+				prev_layer = layer
 
 	def train_dend_temp_contrast(self, targets, lr):
 		'''
@@ -379,7 +382,6 @@ class Net(nn.Module):
 		Returns:
 		- float: Accuracy on the training samples.
 		'''	
-		# TODO implement bias learning
 
 		self.eval()
 		debug = False
@@ -691,19 +693,24 @@ def main(description, plot, interactive, export, export_file_path, seed):
 	# Train and Test model
 	set_seed(network_seed)
 
-	label_dict = {'backprop_learned_bias': 'Backprop learned bias',
-			   'backprop_zero_bias': 'Backprop zero bias',
-			   'backprop_fixed_bias': 'Backprop fixed bias',
-				'dend_temp_contrast': 'Dendritic Temporal Contrast'}
+	label_dict = {'backprop_learned_bias': 'Backprop Learned Bias',
+				'backprop_zero_bias': 'Backprop Zero Bias',
+			   	'backprop_fixed_bias': 'Backprop Fixed Bias',
+				'dend_temp_contrast_learned_bias': 'Dendritic Temporal Contrast Learned Bias',
+			   	'dend_temp_contrast_zero_bias': 'Dendritic Temporal Contrast Zero Bias', 
+			   	'dend_temp_contrast_fixed_bias': 'Dendritic Temporal Contrast Fixed Bias'}
 	
 	lr_dict = {'backprop_learned_bias': 0.11,
 			   'backprop_zero_bias': 0.01,
 			   'backprop_fixed_bias': 0.10,
-			   'dend_temp_contrast': 0.016}
+			   'dend_temp_contrast_learned_bias': 0.11, # need to screen
+			   'dend_temp_contrast_zero_bias': 0.01, # need to screen
+			   'dend_temp_contrast_fixed_bias': 0.016}
 	
 	criterion = "MSELoss"
 	num_epochs = 2
 	local_torch_random.manual_seed(data_order_seed)
+
 	if "backprop" in description: 
 		if description == 'backprop_learned_bias':
 			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=True).to(DEVICE)
@@ -713,8 +720,13 @@ def main(description, plot, interactive, export, export_file_path, seed):
 			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
 		net.train_model('backprop', lr_dict[description], criterion, train_loader, num_epochs=num_epochs, device=DEVICE)
 
-	elif description == "dend_temp_contrast":
-		net = Net(nn.ReLU,  X_train.shape[1], [128, 32], num_classes, description=description).to(DEVICE)
+	elif "dend_temp_contrast" in description:
+		if description == "dend_temp_contrast_learned_bias":
+			net = Net(nn.ReLU,  X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=True).to(DEVICE)
+		elif description == "dend_temp_contrast_zero_bias":
+			net = Net(nn.ReLU,  X_train.shape[1], [128, 32], num_classes, description=description, use_bias=False, learn_bias=False).to(DEVICE)
+		elif description == "dend_temp_contrast_fixed_bias":
+			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
 		net.train_model('dend_temp_contrast', lr_dict[description], criterion, train_loader, num_epochs=num_epochs, verbose=False, device=DEVICE)
 	
 	test_acc = net.test_model(test_loader, verbose=True, device=DEVICE)
@@ -722,6 +734,7 @@ def main(description, plot, interactive, export, export_file_path, seed):
 	if plot:
 		net.display_summary(test_loader, test_acc, title=label_dict[description])
 		net.plot_params(title=label_dict[description])
+		plt.show()
 
 	if export:
 		if os.path.isfile(export_file_path):
@@ -732,9 +745,6 @@ def main(description, plot, interactive, export, export_file_path, seed):
 		model_data_dict[description] = net
 		with open(export_file_path, "wb") as f:
 			pickle.dump(model_data_dict, f)
-
-	if plot:
-		plt.show()
 
 	if interactive:
 		globals().update(locals())
