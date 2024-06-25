@@ -19,16 +19,21 @@ def main(description, seed, export, export_file_path):
 	DEVICE = spiral.set_device()
 	local_torch_random = torch.Generator()
 	
-	label_dict = {'backprop_learned_bias': 'Backprop learned bias',
-			   'backprop_zero_bias': 'Backprop zero bias',
-			   'backprop_fixed_bias': 'Backprop fixed bias',
-			   'dend_temp_contrast': 'Dendritic Temporal Contrast'}
+	label_dict = {'backprop_learned_bias': 'Backprop Learned Bias',
+				'backprop_zero_bias': 'Backprop Zero Bias',
+			   	'backprop_fixed_bias': 'Backprop Fixed Bias',
+				'dend_temp_contrast_learned_bias': 'Dendritic Temporal Contrast Learned Bias',
+			   	'dend_temp_contrast_zero_bias': 'Dendritic Temporal Contrast Zero Bias', 
+			   	'dend_temp_contrast_fixed_bias': 'Dendritic Temporal Contrast Fixed Bias'}
 
 	num_classes = 4
 	X_test, y_test, X_train, y_train, test_loader, train_loader = spiral.generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=False)
 
 	accuracy_history = []
-	learning_rates = np.arange(0.01, 0.03 + 0.002, 0.002)
+	start = 0.01
+	end = 0.5
+	step = 0.01
+	learning_rates = np.arange(start, end + step, step)
 	criterion = "MSELoss"
 	num_epochs = 2
 	for i in learning_rates:
@@ -44,8 +49,13 @@ def main(description, seed, export, export_file_path):
 				net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
 			acc = net.train_model('backprop', i, criterion, train_loader, num_epochs=num_epochs, verbose=True, device=DEVICE)
 
-		elif description == "dend_temp_contrast":
-			net = Net(nn.ReLU,  X_train.shape[1], [128, 32], num_classes, description=description).to(DEVICE)
+		elif "dend_temp_contrast" in description:
+			if description == "dend_temp_contrast_learned_bias":
+				net = Net(nn.ReLU,  X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=True).to(DEVICE)
+			elif description == "dend_temp_contrast_zero_bias":
+				net = Net(nn.ReLU,  X_train.shape[1], [128, 32], num_classes, description=description, use_bias=False, learn_bias=False).to(DEVICE)
+			elif description == "dend_temp_contrast_fixed_bias":
+				net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
 			acc = net.train_model('dend_temp_contrast', i, criterion, train_loader, num_epochs=num_epochs, verbose=True, device=DEVICE)
 
 		accuracy_history.append(acc)
@@ -59,21 +69,9 @@ def main(description, seed, export, export_file_path):
 	plt.ylabel('Accuracy')
 	plt.title(f'Learning Rate Screen for {label_dict[description]}')
 	if export:
-		plt.savefig(f'{export_file_path}/{description}_screen.svg', format='svg')
-		plt.savefig(f'{export_file_path}/{description}_screen.png', format='png')
+		plt.savefig(f'{export_file_path}/{description}_screen_{start}-{end}.svg', format='svg')
+		plt.savefig(f'{export_file_path}/{description}_screen_{start}-{end}.png', format='png')
 	fig.show()
-
-	# chartLabels = ['Using Learned Biases', 'No Biases', 'Using Biases without Learning']
-	# chartData = [test_acc, no_bias_test_acc, fixed_bias_test_acc]
-	# fig = plt.figure()
-	# bars = plt.bar(chartLabels, chartData, alpha=0.5)
-	# plt.xlabel('Network Model')
-	# plt.ylabel('Accuracy')
-	# plt.title('Accuracy of the Network')
-	# for bar in bars:
-	# 	yval = bar.get_height()
-	# 	plt.text(bar.get_x() + bar.get_width()/2.0, yval, round(yval, 2), va='bottom') 
-	# fig.show()
 
 	plt.show()
 

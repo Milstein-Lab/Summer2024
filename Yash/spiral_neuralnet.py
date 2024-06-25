@@ -161,8 +161,6 @@ class Net(nn.Module):
 		self.nudges = {}
 		self.backward_activity = {}
 
-		self.hidden_activations = []
-
 		layers = []
 		prev_size = input_feature_num
 		for i, hidden_size in enumerate(hidden_unit_nums):
@@ -179,7 +177,7 @@ class Net(nn.Module):
 			else:
 				self.biases[key] = torch.zeros(hidden_size)
 			self.initial_weights[key] = layer.weight.data.clone()
-			self.initial_biases[key] = layer.bias.data.clone()
+			self.initial_biases[key] = self.biases[key].data.clone()
 
 			act_layer = actv()
 			layers.append(act_layer)
@@ -194,11 +192,11 @@ class Net(nn.Module):
 		if use_bias:
 			self.biases['Out'] = out_layer.bias
 			if not learn_bias:
-					out_layer.bias.requires_grad = False
+				out_layer.bias.requires_grad = False
 		else:
 			self.biases['Out'] = torch.zeros(output_feature_num)
 		self.initial_weights['Out'] = out_layer.weight.data.clone()
-		self.initial_biases['Out'] = out_layer.bias.data.clone()
+		self.initial_biases['Out'] = self.biases['Out'].data.clone()
 
 		last_layer = actv()
 		layers.append(last_layer) # ReLU after output state layer
@@ -331,6 +329,8 @@ class Net(nn.Module):
 
 				self.training_losses.append(loss.item())
 
+				# assert False
+
 		for key, layer in self.layers.items():
 			self.forward_soma_state_train_history[key] = torch.stack(self.forward_soma_state_train_history[key]).squeeze()
 			self.forward_activity_train_history[key] = torch.stack(self.forward_activity_train_history[key]).squeeze()
@@ -345,7 +345,7 @@ class Net(nn.Module):
 		self.final_biases = {}
 		for key, layer in self.layers.items():
 			self.final_weights[key] = layer.weight.data.clone()
-			self.final_biases[key] = layer.bias.data.clone()
+			self.final_biases[key] = self.biases[key].data.clone()
 
 		if verbose:
 			print(f'\nAccuracy on the {train_total} training samples: {train_acc:0.2f}')
@@ -366,8 +366,11 @@ class Net(nn.Module):
 			for layer in self.layers.keys():
 				local_loss = (self.nudges[layer] * self.ReLU_derivative(self.forward_soma_state[layer])).squeeze()
 				self.weights[layer].data += lr * torch.outer(local_loss, self.forward_activity[prev_layer].squeeze())
+				
 				if self.use_bias and self.learn_bias:
 					self.biases[layer].data += lr * local_loss
+				elif self.learn_bias == False:
+					self.biases[layer].data = self.biases[layer].data
 				prev_layer = layer
 
 	def train_dend_temp_contrast(self, targets, lr):
@@ -391,7 +394,7 @@ class Net(nn.Module):
 
 		for layer in reverse_layers:
 			if layer == 'Out':
-				self.nudges[layer] = targets - self.forward_activity['Out']
+				self.nudges[layer] = 2.0/self.output_feature_num * (targets - self.forward_activity['Out'])
 			else:
 				self.forward_dend_state[layer] = self.forward_activity[prev_layer] @ self.weights[prev_layer]
 				self.backward_dend_state[layer] = self.backward_activity[prev_layer] @ self.weights[prev_layer]
@@ -400,7 +403,6 @@ class Net(nn.Module):
 			self.backward_activity[layer] = self.activation_functions[layer](self.forward_soma_state[layer] + self.nudges[layer])
 			prev_layer = layer
 
-		# step (based on Df and Db)
 		self.step_dend_temp_contrast(lr)
 	
 	def test_model(self, test_loader, verbose=True, device='cpu'):
@@ -646,15 +648,15 @@ def generate_data(K=4, sigma=0.16, N=1000, seed=None, gen=None, display=True):
 
 	if display:
 		fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(8, 4))
-		axes[0].scatter(X[:, 0], X[:, 1], c = y)
+		axes[0].scatter(X[:, 0], X[:, 1], c = y, s=10)
 		axes[0].set_xlabel('x1')
 		axes[0].set_ylabel('x2')
 		axes[0].set_title('Train Data')
 
-		axes[1].scatter(X_test[:, 0], X_test[:, 1], c=y_test)
+		axes[1].scatter(X_test[:, 0], X_test[:, 1], c=y_test, s=10)
 		axes[1].set_xlabel('x1')
 		axes[1].set_ylabel('x2')
-		axes[1].set_title('Test data')
+		axes[1].set_title('Test Data')
 
 		fig.tight_layout()
 		fig.show()
@@ -703,8 +705,8 @@ def main(description, plot, interactive, export, export_file_path, seed):
 	lr_dict = {'backprop_learned_bias': 0.11,
 			   'backprop_zero_bias': 0.01,
 			   'backprop_fixed_bias': 0.10,
-			   'dend_temp_contrast_learned_bias': 0.11, # need to screen
-			   'dend_temp_contrast_zero_bias': 0.01, # need to screen
+			   'dend_temp_contrast_learned_bias': 0.04,
+			   'dend_temp_contrast_zero_bias': 0.01,
 			   'dend_temp_contrast_fixed_bias': 0.016}
 	
 	criterion = "MSELoss"
@@ -718,8 +720,13 @@ def main(description, plot, interactive, export, export_file_path, seed):
 			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=False, learn_bias=False).to(DEVICE)
 		elif description == 'backprop_fixed_bias':
 			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
-		net.train_model('backprop', lr_dict[description], criterion, train_loader, num_epochs=num_epochs, device=DEVICE)
+		# try:
+		# 	net.train_model('backprop', lr_dict[description], criterion, train_loader, num_epochs=num_epochs, device=DEVICE)
+		# except:
+		# 	pass
 
+		net.train_model('backprop', lr_dict[description], criterion, train_loader, num_epochs=num_epochs, device=DEVICE)
+		
 	elif "dend_temp_contrast" in description:
 		if description == "dend_temp_contrast_learned_bias":
 			net = Net(nn.ReLU,  X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=True).to(DEVICE)
@@ -727,9 +734,14 @@ def main(description, plot, interactive, export, export_file_path, seed):
 			net = Net(nn.ReLU,  X_train.shape[1], [128, 32], num_classes, description=description, use_bias=False, learn_bias=False).to(DEVICE)
 		elif description == "dend_temp_contrast_fixed_bias":
 			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
+		# try:
+		# 	net.train_model('dend_temp_contrast', lr_dict[description], criterion, train_loader, num_epochs=num_epochs, verbose=False, device=DEVICE)
+		# except:
+		# 	pass
+
 		net.train_model('dend_temp_contrast', lr_dict[description], criterion, train_loader, num_epochs=num_epochs, verbose=False, device=DEVICE)
-	
-	test_acc = net.test_model(test_loader, verbose=True, device=DEVICE)
+
+	test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
 
 	if plot:
 		net.display_summary(test_loader, test_acc, title=label_dict[description])
@@ -745,6 +757,7 @@ def main(description, plot, interactive, export, export_file_path, seed):
 		model_data_dict[description] = net
 		with open(export_file_path, "wb") as f:
 			pickle.dump(model_data_dict, f)
+		print(f"Network exported to {export_file_path}")
 
 	if interactive:
 		globals().update(locals())
