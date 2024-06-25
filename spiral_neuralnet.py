@@ -18,16 +18,15 @@ import click
 
 
 # set_seed() and seed_worker()
-def set_seed(seed=None, seed_torch=True):
+def set_seed(seed=None, seed_torch=True, verbose=False):
 	"""
 	Function that controls randomness. NumPy and random modules must be imported.
   
 	Args:
-	  seed : Integer
-		A non-negative integer that defines the random state. Default is `None`.
-	  seed_torch : Boolean
-		If `True` sets the random seed for pytorch tensors, so pytorch module
-		must be imported. Default is `True`.
+	- seed (Integer): A non-negative integer that defines the random state. Default is `None`.
+	- seed_torch (Boolean): If `True` sets the random seed for pytorch tensors, so pytorch module
+							must be imported. Default is `True`.
+	- verbose (boolean): If True, print seed being used.
   
 	Returns:
 	  Nothing.
@@ -43,7 +42,8 @@ def set_seed(seed=None, seed_torch=True):
 		torch.backends.cudnn.benchmark = False
 		torch.backends.cudnn.deterministic = True
 
-	print(f'Random seed {seed} has been set.')
+	if verbose:
+		print(f'Random seed {seed} has been set.')
 
 # In case that `DataLoader` is used
 def seed_worker(worker_id):
@@ -52,10 +52,8 @@ def seed_worker(worker_id):
 	multi-process data loading algorithm.
   
 	Args:
-	  worker_id: integer
-		ID of subprocess to seed. 0 means that
-		the data will be loaded in the main process
-		Refer: https://pytorch.org/docs/stable/data.html#data-loading-randomness for more details
+	- worker_id (integer): ID of subprocess to seed. 0 means that the data will be loaded in the main process
+							Refer: https://pytorch.org/docs/stable/data.html#data-loading-randomness for more details
   
 	Returns:
 	  Nothing
@@ -65,21 +63,22 @@ def seed_worker(worker_id):
 	random.seed(worker_seed)
 	
 # set_device() to CPU or GPU
-def set_device():
+def set_device(verbose=False):
 	"""
 	Set the device. CUDA if available, CPU otherwise
   
 	Args:
-	  None
+	- verbose (boolean): If True, print whether GPU is being used.
   
 	Returns:
-	  Nothing
+	- Nothing
 	"""
 	device = "cuda" if torch.cuda.is_available() else "cpu"
-	if device != "cuda":
-		print("GPU is not enabled in this notebook")
-	else:
-		print("GPU is enabled in this notebook")
+	if verbose:
+		if device != "cuda":
+			print("GPU is not enabled in this notebook")
+		else:
+			print("GPU is enabled in this notebook")
 
 	return device
 
@@ -89,18 +88,13 @@ def create_spiral_dataset(K, sigma, N):
 	Function to simulate spiral dataset
   
 	Args:
-	  K: int
-		Number of classes
-	  sigma: float
-		Standard deviation
-	  N: int
-		Number of data points
+	- K (int): Number of classes
+	- sigma (float): Standard deviation
+	- N (int): Number of data points
   
 	Returns:
-	  X: torch.tensor
-		Spiral data
-	  y: torch.tensor
-		Corresponding ground truth
+	- X (torch.tensor): Spiral data
+	- y (torch.tensor): Corresponding ground truth
 	"""
 
 	# Initialize t, X, y
@@ -329,7 +323,7 @@ class Net(nn.Module):
 
 				self.training_losses.append(loss.item())
 
-				# assert False
+				assert False
 
 		for key, layer in self.layers.items():
 			self.forward_soma_state_train_history[key] = torch.stack(self.forward_soma_state_train_history[key]).squeeze()
@@ -354,7 +348,7 @@ class Net(nn.Module):
 	
 	def ReLU_derivative(self, x):
 		output = torch.ones_like(x)
-		indexes = torch.where(output < 0)
+		indexes = torch.where(x <= 0)
 		output[indexes] = 0
 		return output
 
@@ -431,21 +425,14 @@ class Net(nn.Module):
 		Helper function to plot decision map
 	
 		Args:
-		DEVICE: cpu or gpu
-			Device type
-		X_test: torch.tensor
-			Test data
-		y_test: torch.tensor
-			Labels of the test data
-		M: int
-			Size of the constructed tensor with meshgrid
-		x_max: float
-			Defines range for the set of points
-		eps: float
-			Decision threshold
+		- X_test (torch.tensor): Test data
+		- y_test (torch.tensor): Labels of the test data
+		- DEVICE (cpu or gpu): Device type
+		- M (int): Size of the constructed tensor with meshgrid
+		- eps (float): Decision threshold
 	
 		Returns:
-		Nothing
+		- Nothing
 		"""
 		X_all = sample_grid()
 		y_pred = self.forward(X_all.to(DEVICE), store=False).cpu()
@@ -466,7 +453,8 @@ class Net(nn.Module):
 
 		Args:
 		- test_loader (torch.utils.data type): Combines the test dataset and sampler, and provides an iterable over the given dataset.
-		- device (string): CUDA/GPU if available, CPU otherwise
+		- test_acc (int): Accuracy of model after testing.
+		- title (string): Title of model based on description.
 
 		Returns:
 		- Nothing
@@ -539,7 +527,7 @@ class Net(nn.Module):
 		Plot initial and final weights and biases for all layers.
 
 		Args:
-		- Nothing
+		- title (string): Title of model based on description.
 
 		Returns:
 		- Nothing
@@ -707,7 +695,7 @@ def main(description, plot, interactive, export, export_file_path, seed):
 			   'backprop_fixed_bias': 0.10,
 			   'dend_temp_contrast_learned_bias': 0.04,
 			   'dend_temp_contrast_zero_bias': 0.01,
-			   'dend_temp_contrast_fixed_bias': 0.016}
+			   'dend_temp_contrast_fixed_bias': 0.10}
 	
 	criterion = "MSELoss"
 	num_epochs = 2
@@ -720,12 +708,12 @@ def main(description, plot, interactive, export, export_file_path, seed):
 			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=False, learn_bias=False).to(DEVICE)
 		elif description == 'backprop_fixed_bias':
 			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
-		# try:
-		# 	net.train_model('backprop', lr_dict[description], criterion, train_loader, num_epochs=num_epochs, device=DEVICE)
-		# except:
-		# 	pass
+		try:
+			net.train_model('backprop', lr_dict[description], criterion, train_loader, num_epochs=num_epochs, device=DEVICE)
+		except:
+			pass
 
-		net.train_model('backprop', lr_dict[description], criterion, train_loader, num_epochs=num_epochs, device=DEVICE)
+		# net.train_model('backprop', lr_dict[description], criterion, train_loader, num_epochs=num_epochs, device=DEVICE)
 		
 	elif "dend_temp_contrast" in description:
 		if description == "dend_temp_contrast_learned_bias":
@@ -734,14 +722,14 @@ def main(description, plot, interactive, export, export_file_path, seed):
 			net = Net(nn.ReLU,  X_train.shape[1], [128, 32], num_classes, description=description, use_bias=False, learn_bias=False).to(DEVICE)
 		elif description == "dend_temp_contrast_fixed_bias":
 			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
-		# try:
-		# 	net.train_model('dend_temp_contrast', lr_dict[description], criterion, train_loader, num_epochs=num_epochs, verbose=False, device=DEVICE)
-		# except:
-		# 	pass
+		try:
+			net.train_model('dend_temp_contrast', lr_dict[description], criterion, train_loader, num_epochs=num_epochs, verbose=False, device=DEVICE)
+		except:
+			pass
 
-		net.train_model('dend_temp_contrast', lr_dict[description], criterion, train_loader, num_epochs=num_epochs, verbose=False, device=DEVICE)
+		# net.train_model('dend_temp_contrast', lr_dict[description], criterion, train_loader, num_epochs=num_epochs, verbose=False, device=DEVICE)
 
-	test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
+	# test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
 
 	if plot:
 		net.display_summary(test_loader, test_acc, title=label_dict[description])
