@@ -3,4 +3,4 @@
 *.svg
 /testing.ipynb
 /test.py
-/Yash/__pycache__/*
+/__pycache__/*
