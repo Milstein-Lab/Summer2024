@@ -1,5 +1,6 @@
 *.pkl
 *.png
 *.svg
-/Yash/tutorial.ipynb
+/Yash/testing.ipynb
+/Yash/test.py
 /Yash/__pycache__/*
