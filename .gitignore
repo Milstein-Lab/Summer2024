@@ -3,3 +3,4 @@
 *.svg
 /test.py
 /__pycache__/*
+.idea
