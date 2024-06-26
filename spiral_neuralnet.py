@@ -16,7 +16,6 @@ import pickle
 import os
 import click
 
-
 # set_seed() and seed_worker()
 def set_seed(seed=None, seed_torch=True, verbose=False):
 	"""
@@ -211,7 +210,6 @@ class Net(nn.Module):
 		Returns:
 		- x (torch.tensor): Output data
 		"""
-		
 		if store:
 			self.forward_activity['Input'] = x.detach().clone()
 
@@ -306,8 +304,8 @@ class Net(nn.Module):
 				inputs, labels = data
 				inputs = inputs.to(device).float()
 				labels = labels.to(device).long()
-				print(inputs)
-				print(labels)
+				# print(inputs)
+				# print(labels)
 
 				# forward + backward + optimize
 				outputs = self.forward(inputs)
@@ -319,7 +317,7 @@ class Net(nn.Module):
 				# Decide criterion function
 				criterion_function = eval(f"nn.{criterion}()")
 				if criterion == "MSELoss":
-					targets = torch.zeros((inputs.shape[0],4))
+					targets = torch.zeros((inputs.shape[0], self.output_feature_num))
 					for row in range(len(labels)):
 						col = labels[row].int()
 						targets[row][col] = 1
@@ -335,8 +333,6 @@ class Net(nn.Module):
 					self.train_dend_temp_contrast(targets, lr)
 
 				self.training_losses.append(loss.item())
-
-				assert False
 
 		for key, layer in self.layers.items():
 			self.forward_soma_state_train_history[key] = torch.stack(self.forward_soma_state_train_history[key]).squeeze()
@@ -397,7 +393,8 @@ class Net(nn.Module):
 
 		for layer in reverse_layers:
 			if layer == 'Out':
-				self.nudges[layer] = 2.0/self.output_feature_num * self.ReLU_derivative(self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])
+				# scalar = torch.tensor(2.0) / torch.tensor(self.output_feature_num)
+				self.nudges[layer] = (2.0 / self.output_feature_num) * self.ReLU_derivative(self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])
 			else:
 				self.forward_dend_state[layer] = self.forward_activity[prev_layer] @ self.weights[prev_layer]
 				self.backward_dend_state[layer] = self.backward_activity[prev_layer] @ self.weights[prev_layer]
@@ -702,7 +699,7 @@ def main(description, plot, interactive, export, export_file_path, seed):
 	lr_dict = {'backprop_learned_bias': 0.11,
 			   'backprop_zero_bias': 0.01,
 			   'backprop_fixed_bias': 0.10,
-			   'dend_temp_contrast_learned_bias': 0.12,
+			   'dend_temp_contrast_learned_bias': 0.11,
 			   'dend_temp_contrast_zero_bias': 0.01,
 			   'dend_temp_contrast_fixed_bias': 0.10}
 	
@@ -718,12 +715,8 @@ def main(description, plot, interactive, export, export_file_path, seed):
 		elif description == 'backprop_fixed_bias':
 			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
 		net.register_hooks()
-		try:
-			net.train_model('backprop', lr_dict[description], criterion, train_loader, num_epochs=num_epochs, device=DEVICE)
-		except:
-			pass
 
-		# net.train_model('backprop', lr_dict[description], criterion, train_loader, num_epochs=num_epochs, device=DEVICE)
+		net.train_model('backprop', lr_dict[description], criterion, train_loader, num_epochs=num_epochs, device=DEVICE)
 		
 	elif "dend_temp_contrast" in description:
 		if description == "dend_temp_contrast_learned_bias":
@@ -733,17 +726,13 @@ def main(description, plot, interactive, export, export_file_path, seed):
 		elif description == "dend_temp_contrast_fixed_bias":
 			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
 		net.register_hooks()
-		try:
-			net.train_model('dend_temp_contrast', lr_dict[description], criterion, train_loader, num_epochs=num_epochs, verbose=False, device=DEVICE)
-		except:
-			pass
 
-	# 	net.train_model('dend_temp_contrast', lr_dict[description], criterion, train_loader, num_epochs=num_epochs, verbose=False, device=DEVICE)
+		net.train_model('dend_temp_contrast', lr_dict[description], criterion, train_loader, num_epochs=num_epochs, verbose=False, device=DEVICE)
 
-	# test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
+	test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
 
 	if plot:
-		# net.display_summary(test_loader, test_acc, title=label_dict[description])
+		net.display_summary(test_loader, test_acc, title=label_dict[description])
 		net.plot_params(title=label_dict[description])
 		plt.show()
 
