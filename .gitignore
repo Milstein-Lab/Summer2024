@@ -1,6 +1,5 @@
 *.pkl
 *.png
 *.svg
-/testing.ipynb
 /test.py
 /__pycache__/*

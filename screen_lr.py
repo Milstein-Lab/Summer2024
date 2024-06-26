@@ -31,7 +31,7 @@ def main(description, seed, export, export_file_path):
 
 	accuracy_history = []
 	start = 0.01
-	end = 0.5
+	end = 0.2
 	step = 0.01
 	learning_rates = np.arange(start, end + step, step)
 	criterion = "MSELoss"

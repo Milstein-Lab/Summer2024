@@ -155,6 +155,8 @@ class Net(nn.Module):
 		self.nudges = {}
 		self.backward_activity = {}
 
+		self.hooked_grads = {}
+
 		layers = []
 		prev_size = input_feature_num
 		for i, hidden_size in enumerate(hidden_unit_nums):
@@ -224,6 +226,15 @@ class Net(nn.Module):
 				self.forward_activity[key] = x.detach().clone() # After ReLU
 		
 		return x
+
+	def save_gradients(self, key):
+		def hook_fn(module, grad_input, grad_output):
+			self.hooked_grads[key] = grad_output[0]
+		return hook_fn
+
+	def register_hooks(self):
+		for key in self.layers.keys():
+			self.layers[key].register_full_backward_hook(self.save_gradients(key))
 	
 	def test(self, data_loader, device='cpu'):
 		"""
@@ -295,6 +306,8 @@ class Net(nn.Module):
 				inputs, labels = data
 				inputs = inputs.to(device).float()
 				labels = labels.to(device).long()
+				print(inputs)
+				print(labels)
 
 				# forward + backward + optimize
 				outputs = self.forward(inputs)
@@ -358,13 +371,10 @@ class Net(nn.Module):
 		with torch.no_grad():
 			prev_layer = 'Input'
 			for layer in self.layers.keys():
-				local_loss = (self.nudges[layer] * self.ReLU_derivative(self.forward_soma_state[layer])).squeeze()
-				self.weights[layer].data += lr * torch.outer(local_loss, self.forward_activity[prev_layer].squeeze())
+				self.weights[layer].data += lr * torch.outer(self.nudges[layer].squeeze(), self.forward_activity[prev_layer].squeeze())
 				
 				if self.use_bias and self.learn_bias:
-					self.biases[layer].data += lr * local_loss
-				elif self.learn_bias == False:
-					self.biases[layer].data = self.biases[layer].data
+					self.biases[layer].data += lr * self.nudges[layer].squeeze()
 				prev_layer = layer
 
 	def train_dend_temp_contrast(self, targets, lr):
@@ -372,12 +382,11 @@ class Net(nn.Module):
 		Train model using Target propogation Temporal contrast learning
 
 		Args:
-		- label (torch tensor): Train label
+		- targets (torch tensor): Target activities for output neurons
 		- lr (float): Learning rate 
-		- verbose (bool, optional): If True, prints the accuracy on the training samples. Defaults to False.
 
 		Returns:
-		- float: Accuracy on the training samples.
+		- Nothing
 		'''	
 
 		self.eval()
@@ -388,17 +397,17 @@ class Net(nn.Module):
 
 		for layer in reverse_layers:
 			if layer == 'Out':
-				self.nudges[layer] = 2.0/self.output_feature_num * (targets - self.forward_activity['Out'])
+				self.nudges[layer] = 2.0/self.output_feature_num * self.ReLU_derivative(self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])
 			else:
 				self.forward_dend_state[layer] = self.forward_activity[prev_layer] @ self.weights[prev_layer]
 				self.backward_dend_state[layer] = self.backward_activity[prev_layer] @ self.weights[prev_layer]
-				self.nudges[layer] = self.backward_dend_state[layer] - self.forward_dend_state[layer]
+				self.nudges[layer] = self.ReLU_derivative(self.forward_soma_state[layer]) * (self.backward_dend_state[layer] - self.forward_dend_state[layer])
 
 			self.backward_activity[layer] = self.activation_functions[layer](self.forward_soma_state[layer] + self.nudges[layer])
 			prev_layer = layer
 
 		self.step_dend_temp_contrast(lr)
-	
+
 	def test_model(self, test_loader, verbose=True, device='cpu'):
 		'''
 		Evaluate performance
@@ -693,7 +702,7 @@ def main(description, plot, interactive, export, export_file_path, seed):
 	lr_dict = {'backprop_learned_bias': 0.11,
 			   'backprop_zero_bias': 0.01,
 			   'backprop_fixed_bias': 0.10,
-			   'dend_temp_contrast_learned_bias': 0.04,
+			   'dend_temp_contrast_learned_bias': 0.12,
 			   'dend_temp_contrast_zero_bias': 0.01,
 			   'dend_temp_contrast_fixed_bias': 0.10}
 	
@@ -708,6 +717,7 @@ def main(description, plot, interactive, export, export_file_path, seed):
 			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=False, learn_bias=False).to(DEVICE)
 		elif description == 'backprop_fixed_bias':
 			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
+		net.register_hooks()
 		try:
 			net.train_model('backprop', lr_dict[description], criterion, train_loader, num_epochs=num_epochs, device=DEVICE)
 		except:
@@ -722,17 +732,18 @@ def main(description, plot, interactive, export, export_file_path, seed):
 			net = Net(nn.ReLU,  X_train.shape[1], [128, 32], num_classes, description=description, use_bias=False, learn_bias=False).to(DEVICE)
 		elif description == "dend_temp_contrast_fixed_bias":
 			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
+		net.register_hooks()
 		try:
 			net.train_model('dend_temp_contrast', lr_dict[description], criterion, train_loader, num_epochs=num_epochs, verbose=False, device=DEVICE)
 		except:
 			pass
 
-		# net.train_model('dend_temp_contrast', lr_dict[description], criterion, train_loader, num_epochs=num_epochs, verbose=False, device=DEVICE)
+	# 	net.train_model('dend_temp_contrast', lr_dict[description], criterion, train_loader, num_epochs=num_epochs, verbose=False, device=DEVICE)
 
 	# test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
 
 	if plot:
-		net.display_summary(test_loader, test_acc, title=label_dict[description])
+		# net.display_summary(test_loader, test_acc, title=label_dict[description])
 		net.plot_params(title=label_dict[description])
 		plt.show()
 
