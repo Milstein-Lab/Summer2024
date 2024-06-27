@@ -408,7 +408,7 @@ class Net(nn.Module):
 					self.biases[layer].data += lr * self.nudges[layer].squeeze()
 				prev_layer = layer
 
-	def step_ojas_Rule(self, lr):
+	def step_ojas(self, lr):
 
 		with torch.no_grad():
 			prev_layer = 'Input'
@@ -446,7 +446,7 @@ class Net(nn.Module):
 			self.step_dend_temp_contrast(lr)
 		elif 'oja' in description:
 			self.backward_dend_temp_contrast(targets)
-			self.step_ojas_Rule(lr)
+			self.step_ojas(lr)
 		elif 'dend_EI_contrast' in description:
 			pass
 
@@ -749,9 +749,9 @@ def main(description, plot, interactive, export, export_file_path, seed, debug):
 				'dend_temp_contrast_learned_bias': 'Dendritic Temporal Contrast Learned Bias',
 			   	'dend_temp_contrast_zero_bias': 'Dendritic Temporal Contrast Zero Bias', 
 			   	'dend_temp_contrast_fixed_bias': 'Dendritic Temporal Contrast Fixed Bias',
-				'ojas_learned_bias': 'Ojas Rule Learned Bias',
-				'ojas_zero_bias': 'Ojas Zero Bias',
-				'ojas_fixed_bias': 'Ojas Fixed Bias',}
+				'ojas_dend_learned_bias': 'Ojas Rule Learned Bias',
+				'ojas_dend_zero_bias': 'Ojas Zero Bias',
+				'ojas_dend_fixed_bias': 'Ojas Fixed Bias',}
 	
 	lr_dict = {'backprop_learned_bias': 0.11,
 			   'backprop_zero_bias': 0.01,
@@ -759,9 +759,9 @@ def main(description, plot, interactive, export, export_file_path, seed, debug):
 			   'dend_temp_contrast_learned_bias': 0.13,
 			   'dend_temp_contrast_zero_bias': 0.01,
 			   'dend_temp_contrast_fixed_bias': 0.10,
-			   'ojas_learned_bias': 0.13,
-			   'ojas_zero_bias': 0.01,
-			   'ojas_fixed_bias': 0.10}
+			   'ojas_dend_learned_bias': 0.13,
+			   'ojas_dend_zero_bias': 0.01,
+			   'ojas_dend_fixed_bias': 0.10}
 	
 	criterion = "MSELoss"
 	num_epochs = 2

@@ -59,11 +59,11 @@ def main(description, seed, export, export_file_path):
 			elif description == "dend_temp_contrast_fixed_bias":
 				net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
 		elif "ojas" in description:
-			if description == "ojas_learned_bias":
+			if description == "ojas_dend_learned_bias":
 				net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True,learn_bias=True).to(DEVICE)
-			elif description == "ojas_zero_bias":
+			elif description == "ojas_dend_zero_bias":
 				net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=False,learn_bias=False).to(DEVICE)
-			elif description == "ojas_fixed_bias":
+			elif description == "ojas_dend_fixed_bias":
 				net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True,learn_bias=False).to(DEVICE)
 
 		acc = net.train_model(description, i, criterion, train_loader, debug=False, num_epochs=num_epochs, verbose=True, device=DEVICE)
