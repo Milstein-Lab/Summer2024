@@ -154,6 +154,9 @@ class Net(nn.Module):
 		self.nudges = {}
 		self.backward_activity = {}
 
+		if 'dend_EI_contrast' in self.description:
+			self.recurrent_weights = {}
+
 		self.hooked_grads = {}
 
 		layers = []
@@ -261,12 +264,6 @@ class Net(nn.Module):
 		acc = 100 * correct / total
 		return total, acc
 	
-	def train_backprop(self, loss, lr):
-		optimizer = optim.SGD(self.parameters(), lr=lr)
-		optimizer.zero_grad()
-		loss.backward()
-		optimizer.step()
-	
 	def train_model(self, description, lr, criterion, train_loader, debug=False, num_epochs=1, verbose=False, device='cpu'):
 		"""
 		Train model with backprop, accumulate loss, evaluate performance. 
@@ -276,7 +273,7 @@ class Net(nn.Module):
 		- criterion (torch.nn type): Loss function
 		- optimizer (torch.optim type): Implements Adam or MSELoss algorithm.
 		- train_loader (torch.utils.data type): Combines the train dataset and sampler, and provides an iterable over the given dataset.
-		- test_loader (torch.utils.data type): Combines the test dataset and sampler, and provides an iterable over the given dataset.
+		- debug (boolean): If True, stop loop after one train step.
 		- num_epochs (int): Number of epochs [default: 1]
 		- verbose (boolean): If True, print statistics
 		- device (string): CUDA/GPU if available, CPU otherwise
@@ -288,6 +285,7 @@ class Net(nn.Module):
 		self.train()
 		self.training_losses = []
 
+		# Create dictionaries for train state and activities
 		self.forward_soma_state_train_history = {}
 		self.forward_activity_train_history = {} 
 		self.forward_activity_train_history['Input'] = []
@@ -304,8 +302,10 @@ class Net(nn.Module):
 				inputs = inputs.to(device).float()
 				labels = labels.to(device).long()
 
-				# forward + backward + optimize
+				# forward pass
 				outputs = self.forward(inputs)
+
+				# Store forward state and activity info
 				self.forward_activity_train_history['Input'].append(self.forward_activity['Input'])
 				for key, layer in self.layers.items():
 					self.forward_soma_state_train_history[key].append(self.forward_soma_state[key])
@@ -324,16 +324,20 @@ class Net(nn.Module):
 					
 				self.train_labels.append(labels)
 
+				# Choose learning rule
 				if 'backprop' in description:
 					self.train_backprop(loss, lr)
 				elif 'dend' in description:
-					self.train_dend(targets, lr)
+					self.train_dend(description, targets, lr)
 
+				# Track losses
 				self.training_losses.append(loss.item())
 
+				# Stop after one train step
 				if debug:
 					assert False
 
+		# Squeeze all state and activity tensors
 		for key, layer in self.layers.items():
 			self.forward_soma_state_train_history[key] = torch.stack(self.forward_soma_state_train_history[key]).squeeze()
 			self.forward_activity_train_history[key] = torch.stack(self.forward_activity_train_history[key]).squeeze()
@@ -344,6 +348,7 @@ class Net(nn.Module):
 		train_total, train_acc = self.test(train_loader, device)
 		self.train_acc = train_acc
 
+		# Store final weights and biases
 		self.final_weights = {}
 		self.final_biases = {}
 		for key, layer in self.layers.items():
@@ -354,6 +359,12 @@ class Net(nn.Module):
 			print(f'\nAccuracy on the {train_total} training samples: {train_acc:0.2f}')
 
 		return train_acc
+	
+	def train_backprop(self, loss, lr):
+		optimizer = optim.SGD(self.parameters(), lr=lr)
+		optimizer.zero_grad()
+		loss.backward()
+		optimizer.step()
 	
 	def ReLU_derivative(self, x):
 		output = torch.ones_like(x)
@@ -377,7 +388,16 @@ class Net(nn.Module):
 			prev_layer = layer
 
 	def step_dend_temp_contrast(self, lr):
-		# TODO add beta scalars maybe
+		'''
+		Step function for Dendritic Temporal Contrast.
+
+		Args:
+		- lr (float): Learning rate
+
+		Return:
+		- Nothing
+		'''
+		# add beta scalars?
 
 		with torch.no_grad():
 			prev_layer = 'Input'
@@ -388,9 +408,20 @@ class Net(nn.Module):
 					self.biases[layer].data += lr * self.nudges[layer].squeeze()
 				prev_layer = layer
 
-	def train_dend(self, targets, lr):
+	def backward_dend_EI_contrast(self, targets):
+		prev_layer = None
+		reverse_layers = list(self.layers.keys())[::-1]
+
+		for layer in reverse_layers:
+			if layer == 'Out':
+				self.nudges[layer] = (2.0 / self.output_feature_num) * self.ReLU_derivative(self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])
+
+	def step_dend_EI_contrast(self):
+		pass
+
+	def train_dend(self, description, targets, lr):
 		'''
-		Train model using Target propogation Temporal contrast learning
+		Wrapper function for training models with dendritic learning rules.
 
 		Args:
 		- targets (torch tensor): Target activities for output neurons
@@ -400,10 +431,13 @@ class Net(nn.Module):
 		- Nothing
 		'''	
 		self.eval()
-		if 'dend_temp_contrast' in self.description:
+		if 'dend_temp_contrast' in description:
 			self.backward_dend_temp_contrast(targets)
 			self.step_dend_temp_contrast(lr)
-		# Oja's rule elif statement goes here
+		elif 'oja' in description: 
+			pass
+		elif 'dend_EI_contrast' in description:
+			pass
 
 	def test_model(self, test_loader, verbose=True, device='cpu'):
 		'''

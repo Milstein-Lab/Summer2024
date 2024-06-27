@@ -3,3 +3,5 @@
 *.svg
 __pycache__
 .idea
+data
+screen_data
