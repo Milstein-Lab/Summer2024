@@ -749,9 +749,9 @@ def main(description, plot, interactive, export, export_file_path, seed, debug):
 				'dend_temp_contrast_learned_bias': 'Dendritic Temporal Contrast Learned Bias',
 			   	'dend_temp_contrast_zero_bias': 'Dendritic Temporal Contrast Zero Bias', 
 			   	'dend_temp_contrast_fixed_bias': 'Dendritic Temporal Contrast Fixed Bias',
-				'ojas_dend_learned_bias': 'Ojas Rule Learned Bias',
-				'ojas_dend_zero_bias': 'Ojas Zero Bias',
-				'ojas_dend_fixed_bias': 'Ojas Fixed Bias',}
+				'ojas_dend_learned_bias': 'Oja\'s Rule Learned Bias',
+				'ojas_dend_zero_bias': 'Oja\'s Zero Bias',
+				'ojas_dend_fixed_bias': 'Oja\'s Fixed Bias',}
 	
 	lr_dict = {'backprop_learned_bias': 0.11,
 			   'backprop_zero_bias': 0.01,
@@ -767,29 +767,12 @@ def main(description, plot, interactive, export, export_file_path, seed, debug):
 	num_epochs = 2
 	local_torch_random.manual_seed(data_order_seed)
 
-	if "backprop" in description: 
-		if description == 'backprop_learned_bias':
-			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=True).to(DEVICE)
-		elif description == 'backprop_zero_bias':
-			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=False, learn_bias=False).to(DEVICE)
-		elif description == 'backprop_fixed_bias':
-			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
-		
-	elif "dend_temp_contrast" in description:
-		if description == "dend_temp_contrast_learned_bias":
-			net = Net(nn.ReLU,  X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=True).to(DEVICE)
-		elif description == "dend_temp_contrast_zero_bias":
-			net = Net(nn.ReLU,  X_train.shape[1], [128, 32], num_classes, description=description, use_bias=False, learn_bias=False).to(DEVICE)
-		elif description == "dend_temp_contrast_fixed_bias":
-			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
-
-	elif "ojas" in description:
-		if description == "ojas_dend_learned_bias":
-			net = Net(nn.ReLU, X_train.shape[1],[128, 32], num_classes, description= description, use_bias=True, learn_bias=True).to(DEVICE)
-		elif description == "ojas_dend_zero_bias":
-			net = Net(nn.ReLU, X_train.shape[1], [128,32], num_classes, description= description, use_bias=False, learn_bias=False).to(DEVICE)
-		elif description == "ojas_dend_fixed_bias":
-			net = Net(nn.ReLU, X_train.shape[1],[128, 32], num_classes, description= description, use_bias=True, learn_bias=False).to(DEVICE)
+	if "learned_bias" in description:
+		net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=True).to(DEVICE)
+	elif "zero_bias" in description:
+		net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=False, learn_bias=False).to(DEVICE)
+	elif "fixed_bias" in description:
+		net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
 
 	if debug:
 		net.register_hooks()
