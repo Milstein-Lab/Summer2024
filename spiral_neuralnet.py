@@ -445,8 +445,8 @@ class Net(nn.Module):
 			self.backward_dend_temp_contrast(targets)
 			self.step_dend_temp_contrast(lr)
 		elif 'oja' in description:
-            self.backward_dend_temp_contrast(targets)
-            self.step_ojas_Rule(lr)
+			self.backward_dend_temp_contrast(targets)
+			self.step_ojas_Rule(lr)
 		elif 'dend_EI_contrast' in description:
 			pass
 
@@ -784,11 +784,11 @@ def main(description, plot, interactive, export, export_file_path, seed, debug):
 			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
 
 	elif "ojas" in description:
-		if description == "ojas_learned_bias":
+		if description == "ojas_dend_learned_bias":
 			net = Net(nn.ReLU, X_train.shape[1],[128, 32], num_classes, description= description, use_bias=True, learn_bias=True).to(DEVICE)
-		elif description == "ojas_zero_bias":
+		elif description == "ojas_dend_zero_bias":
 			net = Net(nn.ReLU, X_train.shape[1], [128,32], num_classes, description= description, use_bias=False, learn_bias=False).to(DEVICE)
-		elif description == "ojas_fixed_bias":
+		elif description == "ojas_dend_fixed_bias":
 			net = Net(nn.ReLU, X_train.shape[1],[128, 32], num_classes, description= description, use_bias=True, learn_bias=False).to(DEVICE)
 
 	if debug:
@@ -796,7 +796,6 @@ def main(description, plot, interactive, export, export_file_path, seed, debug):
 		train_and_handle_debug(net, description, lr_dict[description], criterion, train_loader, debug, num_epochs, DEVICE)
 	else:
 		net.train_model(description, lr_dict[description], criterion, train_loader, debug=debug, num_epochs=num_epochs, device=DEVICE)
-
 
 	test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
 
