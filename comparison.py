@@ -26,7 +26,10 @@ def main():
 			   	'backprop_fixed_bias': 'Backprop Fixed Bias',
 				'dend_temp_contrast_learned_bias': 'Dendritic Temporal Contrast\nLearned Bias',
 			   	'dend_temp_contrast_zero_bias': 'Dendritic Temporal Contrast\nZero Bias', 
-			   	'dend_temp_contrast_fixed_bias': 'Dendritic Temporal Contrast\nFixed Bias'}
+			   	'dend_temp_contrast_fixed_bias': 'Dendritic Temporal Contrast\nFixed Bias',
+				'ojas_dend_learned_bias': 'Oja\'s Rule Learned Bias',
+				'ojas_dend_zero_bias': 'Oja\'s Zero Bias',
+				'ojas_dend_fixed_bias': 'Oja\'s Fixed Bias'}
 	
 	test_accuracies = {}
 	for description, net in model_data_dict.items():
