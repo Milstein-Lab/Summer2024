@@ -267,7 +267,7 @@ class Net(nn.Module):
 		loss.backward()
 		optimizer.step()
 	
-	def train_model(self, learning_rule, lr, criterion, train_loader, debug, num_epochs=1, verbose=False, device='cpu'):
+	def train_model(self, learning_rule, lr, criterion, train_loader, debug=False, num_epochs=1, verbose=False, device='cpu'):
 		"""
 		Train model with backprop, accumulate loss, evaluate performance. 
 	
@@ -707,8 +707,8 @@ def main(description, plot, interactive, export, export_file_path, seed, debug):
 	
 	lr_dict = {'backprop_learned_bias': 0.11,
 			   'backprop_zero_bias': 0.01,
-			   'backprop_fixed_bias': 0.10,
-			   'dend_temp_contrast_learned_bias': 0.11,
+			   'backprop_fixed_bias': 0.08,
+			   'dend_temp_contrast_learned_bias': 0.13,
 			   'dend_temp_contrast_zero_bias': 0.01,
 			   'dend_temp_contrast_fixed_bias': 0.10}
 	
@@ -723,12 +723,12 @@ def main(description, plot, interactive, export, export_file_path, seed, debug):
 			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=False, learn_bias=False).to(DEVICE)
 		elif description == 'backprop_fixed_bias':
 			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
-		net.register_hooks()
 
 		if debug:
+			net.register_hooks()
 			train_and_handle_debug(net, 'backprop', lr_dict[description], criterion, train_loader, debug, num_epochs, DEVICE)
 		else:
-			net.train_model('backprop', lr_dict[description], criterion, train_loader, debug, num_epochs=num_epochs, device=DEVICE)
+			net.train_model('backprop', lr_dict[description], criterion, train_loader, debug=debug, num_epochs=num_epochs, device=DEVICE)
 		
 	elif "dend_temp_contrast" in description:
 		if description == "dend_temp_contrast_learned_bias":
@@ -737,12 +737,12 @@ def main(description, plot, interactive, export, export_file_path, seed, debug):
 			net = Net(nn.ReLU,  X_train.shape[1], [128, 32], num_classes, description=description, use_bias=False, learn_bias=False).to(DEVICE)
 		elif description == "dend_temp_contrast_fixed_bias":
 			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
-		net.register_hooks()
 
 		if debug:
+			net.register_hooks()
 			train_and_handle_debug(net, 'dend_temp_contrast', lr_dict[description], criterion, train_loader, debug, num_epochs, DEVICE)
 		else:
-			net.train_model('dend_temp_contrast', lr_dict[description], criterion, train_loader, debug, num_epochs=num_epochs, verbose=False, device=DEVICE)
+			net.train_model('dend_temp_contrast', lr_dict[description], criterion, train_loader, debug=debug, num_epochs=num_epochs, verbose=False, device=DEVICE)
 
 	test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
 

@@ -1,6 +1,5 @@
 *.pkl
 *.png
 *.svg
-/test.py
 __pycache__
 .idea
