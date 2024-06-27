@@ -154,6 +154,9 @@ class Net(nn.Module):
 		self.nudges = {}
 		self.backward_activity = {}
 
+		if 'dend_EI_contrast' in self.description:
+			self.recurrent_weights = {}
+
 		self.hooked_grads = {}
 
 		layers = []
@@ -261,23 +264,16 @@ class Net(nn.Module):
 		acc = 100 * correct / total
 		return total, acc
 	
-	def train_backprop(self, loss, lr):
-		optimizer = optim.SGD(self.parameters(), lr=lr)
-		optimizer.zero_grad()
-		loss.backward()
-		optimizer.step()
-	
-	def train_model(self, learning_rule, lr, criterion, train_loader, debug, num_epochs=1, verbose=False, device='cpu'):
+	def train_model(self, description, lr, criterion, train_loader, debug=False, num_epochs=1, verbose=False, device='cpu'):
 		"""
 		Train model with backprop, accumulate loss, evaluate performance. 
 	
 		Args:
-		- learning_rule (string): Learning rule to train model
 		- lr (float): Learning rate
 		- criterion (torch.nn type): Loss function
 		- optimizer (torch.optim type): Implements Adam or MSELoss algorithm.
 		- train_loader (torch.utils.data type): Combines the train dataset and sampler, and provides an iterable over the given dataset.
-		- test_loader (torch.utils.data type): Combines the test dataset and sampler, and provides an iterable over the given dataset.
+		- debug (boolean): If True, stop loop after one train step.
 		- num_epochs (int): Number of epochs [default: 1]
 		- verbose (boolean): If True, print statistics
 		- device (string): CUDA/GPU if available, CPU otherwise
@@ -289,6 +285,7 @@ class Net(nn.Module):
 		self.train()
 		self.training_losses = []
 
+		# Create dictionaries for train state and activities
 		self.forward_soma_state_train_history = {}
 		self.forward_activity_train_history = {} 
 		self.forward_activity_train_history['Input'] = []
@@ -305,8 +302,10 @@ class Net(nn.Module):
 				inputs = inputs.to(device).float()
 				labels = labels.to(device).long()
 
-				# forward + backward + optimize
+				# forward pass
 				outputs = self.forward(inputs)
+
+				# Store forward state and activity info
 				self.forward_activity_train_history['Input'].append(self.forward_activity['Input'])
 				for key, layer in self.layers.items():
 					self.forward_soma_state_train_history[key].append(self.forward_soma_state[key])
@@ -325,19 +324,20 @@ class Net(nn.Module):
 					
 				self.train_labels.append(labels)
 
-				if learning_rule == 'backprop':
+				# Choose learning rule
+				if 'backprop' in description:
 					self.train_backprop(loss, lr)
-				elif learning_rule == 'dend_temp_contrast':
-					self.train_dend_temp_contrast(targets, lr)
+				elif 'dend' in description:
+					self.train_dend(description, targets, lr)
 
-				elif learning_rule == 'ojas':
-					self.train_ojas(targets, lr)
-
+				# Track losses
 				self.training_losses.append(loss.item())
 
+				# Stop after one train step
 				if debug:
 					assert False
 
+		# Squeeze all state and activity tensors
 		for key, layer in self.layers.items():
 			self.forward_soma_state_train_history[key] = torch.stack(self.forward_soma_state_train_history[key]).squeeze()
 			self.forward_activity_train_history[key] = torch.stack(self.forward_activity_train_history[key]).squeeze()
@@ -348,6 +348,7 @@ class Net(nn.Module):
 		train_total, train_acc = self.test(train_loader, device)
 		self.train_acc = train_acc
 
+		# Store final weights and biases
 		self.final_weights = {}
 		self.final_biases = {}
 		for key, layer in self.layers.items():
@@ -359,14 +360,44 @@ class Net(nn.Module):
 
 		return train_acc
 	
+	def train_backprop(self, loss, lr):
+		optimizer = optim.SGD(self.parameters(), lr=lr)
+		optimizer.zero_grad()
+		loss.backward()
+		optimizer.step()
+
 	def ReLU_derivative(self, x):
 		output = torch.ones_like(x)
 		indexes = torch.where(x <= 0)
 		output[indexes] = 0
 		return output
 
+	def backward_dend_temp_contrast(self, targets):
+		prev_layer = None
+		reverse_layers = list(self.layers.keys())[::-1]
+
+		for layer in reverse_layers:
+			if layer == 'Out':
+				self.nudges[layer] = (2.0 / self.output_feature_num) * self.ReLU_derivative(self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])
+			else:
+				self.forward_dend_state[layer] = self.forward_activity[prev_layer] @ self.weights[prev_layer]
+				self.backward_dend_state[layer] = self.backward_activity[prev_layer] @ self.weights[prev_layer]
+				self.nudges[layer] = self.ReLU_derivative(self.forward_soma_state[layer]) * (self.backward_dend_state[layer] - self.forward_dend_state[layer])
+
+			self.backward_activity[layer] = self.activation_functions[layer](self.forward_soma_state[layer] + self.nudges[layer])
+			prev_layer = layer
+
 	def step_dend_temp_contrast(self, lr):
-		# TODO add beta scalars maybe
+		'''
+		Step function for Dendritic Temporal Contrast.
+
+		Args:
+		- lr (float): Learning rate
+
+		Return:
+		- Nothing
+		'''
+		# add beta scalars?
 
 		with torch.no_grad():
 			prev_layer = 'Input'
@@ -386,28 +417,21 @@ class Net(nn.Module):
 				if self.use_bias and self.learn_bias:
 					self.biases[layer].data += lr * self.nudges[layer].squeeze()
 				prev_layer = layer
-	def train_ojas(self, targets, lr):
-		self.eval()
-		debug = False
 
+	def backward_dend_EI_contrast(self, targets):
 		prev_layer = None
 		reverse_layers = list(self.layers.keys())[::-1]
 
 		for layer in reverse_layers:
 			if layer == 'Out':
 				self.nudges[layer] = (2.0 / self.output_feature_num) * self.ReLU_derivative(self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])
-			else:
-				self.forward_dend_state[layer] = self.forward_activity[prev_layer] @ self.weights[prev_layer]
-				self.backward_dend_state[layer] = self.backward_activity[prev_layer] @ self.weights[prev_layer]
-				self.nudges[layer] = self.ReLU_derivative(self.forward_soma_state[layer]) * (self.backward_dend_state[layer] - self.forward_dend_state[layer])
-			self.backward_activity[layer] = self.activation_functions[layer](self.forward_soma_state[layer] + self.nudges[layer])
-			prev_layer = layer
 
-		self.step_ojas_Rule(lr)
+	def step_dend_EI_contrast(self):
+		pass
 
-	def train_dend_temp_contrast(self, targets, lr):
+	def train_dend(self, description, targets, lr):
 		'''
-		Train model using Target propogation Temporal contrast learning
+		Wrapper function for training models with dendritic learning rules.
 
 		Args:
 		- targets (torch tensor): Target activities for output neurons
@@ -415,26 +439,16 @@ class Net(nn.Module):
 
 		Returns:
 		- Nothing
-		'''	
-
+		'''
 		self.eval()
-		debug = False
-
-		prev_layer = None
-		reverse_layers = list(self.layers.keys())[::-1]
-
-		for layer in reverse_layers:
-			if layer == 'Out':
-				self.nudges[layer] = (2.0 / self.output_feature_num) * self.ReLU_derivative(self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])
-			else:
-				self.forward_dend_state[layer] = self.forward_activity[prev_layer] @ self.weights[prev_layer]
-				self.backward_dend_state[layer] = self.backward_activity[prev_layer] @ self.weights[prev_layer]
-				self.nudges[layer] = self.ReLU_derivative(self.forward_soma_state[layer]) * (self.backward_dend_state[layer] - self.forward_dend_state[layer])
-
-			self.backward_activity[layer] = self.activation_functions[layer](self.forward_soma_state[layer] + self.nudges[layer])
-			prev_layer = layer
-
-		self.step_dend_temp_contrast(lr)
+		if 'dend_temp_contrast' in description:
+			self.backward_dend_temp_contrast(targets)
+			self.step_dend_temp_contrast(lr)
+		elif 'oja' in description:
+            self.backward_dend_temp_contrast(targets)
+            self.step_ojas_Rule(lr)
+		elif 'dend_EI_contrast' in description:
+			pass
 
 	def test_model(self, test_loader, verbose=True, device='cpu'):
 		'''
@@ -741,8 +755,8 @@ def main(description, plot, interactive, export, export_file_path, seed, debug):
 	
 	lr_dict = {'backprop_learned_bias': 0.11,
 			   'backprop_zero_bias': 0.01,
-			   'backprop_fixed_bias': 0.10,
-			   'dend_temp_contrast_learned_bias': 0.11,
+			   'backprop_fixed_bias': 0.08,
+			   'dend_temp_contrast_learned_bias': 0.13,
 			   'dend_temp_contrast_zero_bias': 0.01,
 			   'dend_temp_contrast_fixed_bias': 0.10,
 			   'ojas_learned_bias': 0.13,
@@ -760,12 +774,6 @@ def main(description, plot, interactive, export, export_file_path, seed, debug):
 			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=False, learn_bias=False).to(DEVICE)
 		elif description == 'backprop_fixed_bias':
 			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
-		net.register_hooks()
-
-		if debug:
-			train_and_handle_debug(net, 'backprop', lr_dict[description], criterion, train_loader, debug, num_epochs, DEVICE)
-		else:
-			net.train_model('backprop', lr_dict[description], criterion, train_loader, debug, num_epochs=num_epochs, device=DEVICE)
 		
 	elif "dend_temp_contrast" in description:
 		if description == "dend_temp_contrast_learned_bias":
@@ -774,14 +782,6 @@ def main(description, plot, interactive, export, export_file_path, seed, debug):
 			net = Net(nn.ReLU,  X_train.shape[1], [128, 32], num_classes, description=description, use_bias=False, learn_bias=False).to(DEVICE)
 		elif description == "dend_temp_contrast_fixed_bias":
 			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
-		net.register_hooks()
-
-		if debug:
-			train_and_handle_debug(net, 'dend_temp_contrast', lr_dict[description], criterion, train_loader, debug, num_epochs, DEVICE)
-		else:
-			net.train_model('dend_temp_contrast', lr_dict[description], criterion, train_loader, debug, num_epochs=num_epochs, verbose=False, device=DEVICE)
-
-
 
 	elif "ojas" in description:
 		if description == "ojas_learned_bias":
@@ -790,13 +790,16 @@ def main(description, plot, interactive, export, export_file_path, seed, debug):
 			net = Net(nn.ReLU, X_train.shape[1], [128,32], num_classes, description= description, use_bias=False, learn_bias=False).to(DEVICE)
 		elif description == "ojas_fixed_bias":
 			net = Net(nn.ReLU, X_train.shape[1],[128, 32], num_classes, description= description, use_bias=True, learn_bias=False).to(DEVICE)
+
+	if debug:
 		net.register_hooks()
-		if debug:
-			train_and_handle_debug(net, 'ojas', lr_dict[description], criterion, train_loader, debug, num_epochs, DEVICE)
-		else:
-			net.train_model('ojas', lr_dict[description], criterion, train_loader, debug, num_epochs=num_epochs, verbose=False, device=DEVICE)
+		train_and_handle_debug(net, description, lr_dict[description], criterion, train_loader, debug, num_epochs, DEVICE)
+	else:
+		net.train_model(description, lr_dict[description], criterion, train_loader, debug=debug, num_epochs=num_epochs, device=DEVICE)
+
 
 	test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
+
 	if plot:
 		net.display_summary(test_loader, test_acc,  title=label_dict[description])
 		if not debug:

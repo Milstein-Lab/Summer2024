@@ -50,7 +50,6 @@ def main(description, seed, export, export_file_path):
 				net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=False, learn_bias=False).to(DEVICE)
 			elif description == 'backprop_fixed_bias':
 				net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
-			acc = net.train_model('backprop', i, criterion, train_loader, num_epochs=num_epochs, verbose=True, device=DEVICE)
 
 		elif "dend_temp_contrast" in description:
 			if description == "dend_temp_contrast_learned_bias":
@@ -59,7 +58,6 @@ def main(description, seed, export, export_file_path):
 				net = Net(nn.ReLU,  X_train.shape[1], [128, 32], num_classes, description=description, use_bias=False, learn_bias=False).to(DEVICE)
 			elif description == "dend_temp_contrast_fixed_bias":
 				net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
-			acc = net.train_model('dend_temp_contrast', i, criterion, train_loader, num_epochs=num_epochs, verbose=True, device=DEVICE)
 		elif "ojas" in description:
 			if description == "ojas_learned_bias":
 				net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True,learn_bias=True).to(DEVICE)
@@ -67,17 +65,23 @@ def main(description, seed, export, export_file_path):
 				net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=False,learn_bias=False).to(DEVICE)
 			elif description == "ojas_fixed_bias":
 				net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True,learn_bias=False).to(DEVICE)
-			acc = net.train_model('ojas', i, criterion, train_loader, debug = False, num_epochs=num_epochs, verbose=True, device=DEVICE)
 
-
+		acc = net.train_model(description, i, criterion, train_loader, debug=False, num_epochs=num_epochs, verbose=True, device=DEVICE)
 
 		accuracy_history.append(acc)
 		print(f'Learning Rate: {i}\n')
 			
+
+	max_idx = np.argmax(accuracy_history)
+	max_accuracy = accuracy_history[max_idx]
+	best_learning_rate = learning_rates[max_idx]
+	textstr = f'Best Learning Rate: {best_learning_rate:.3f}\nTrain Accuracy: {max_accuracy:.3f}'
+
 	fig = plt.figure()
-	plt.plot(learning_rates, accuracy_history)
-	for i, txt in enumerate(accuracy_history):
-		plt.annotate(f'{learning_rates[i]:.3f}', (learning_rates[i], txt)) 
+	plt.plot(learning_rates, accuracy_history, label=textstr)
+	plt.legend(handlelength=0)
+	plt.scatter(best_learning_rate, max_accuracy, color='red')
+
 	plt.xlabel('Learning Rate')
 	plt.ylabel('Accuracy')
 	plt.title(f'Learning Rate Screen for {label_dict[description]}')
