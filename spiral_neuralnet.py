@@ -267,7 +267,7 @@ class Net(nn.Module):
 		loss.backward()
 		optimizer.step()
 	
-	def train_model(self, learning_rule, lr, criterion, train_loader, num_epochs=1, verbose=False, device='cpu'):
+	def train_model(self, learning_rule, lr, criterion, train_loader, debug, num_epochs=1, verbose=False, device='cpu'):
 		"""
 		Train model with backprop, accumulate loss, evaluate performance. 
 	
@@ -304,8 +304,6 @@ class Net(nn.Module):
 				inputs, labels = data
 				inputs = inputs.to(device).float()
 				labels = labels.to(device).long()
-				# print(inputs)
-				# print(labels)
 
 				# forward + backward + optimize
 				outputs = self.forward(inputs)
@@ -333,6 +331,9 @@ class Net(nn.Module):
 					self.train_dend_temp_contrast(targets, lr)
 
 				self.training_losses.append(loss.item())
+
+				if debug:
+					assert False
 
 		for key, layer in self.layers.items():
 			self.forward_soma_state_train_history[key] = torch.stack(self.forward_soma_state_train_history[key]).squeeze()
@@ -362,7 +363,7 @@ class Net(nn.Module):
 		return output
 
 	def step_dend_temp_contrast(self, lr):
-		# TODO add beta scalars 
+		# TODO add beta scalars maybe
 
 		with torch.no_grad():
 			prev_layer = 'Input'
@@ -393,7 +394,6 @@ class Net(nn.Module):
 
 		for layer in reverse_layers:
 			if layer == 'Out':
-				# scalar = torch.tensor(2.0) / torch.tensor(self.output_feature_num)
 				self.nudges[layer] = (2.0 / self.output_feature_num) * self.ReLU_derivative(self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])
 			else:
 				self.forward_dend_state[layer] = self.forward_activity[prev_layer] @ self.weights[prev_layer]
@@ -676,7 +676,8 @@ def generate_data(K=4, sigma=0.16, N=1000, seed=None, gen=None, display=True):
 @click.option('--export', is_flag=True)
 @click.option('--export_file_path', type=click.Path(file_okay=True), default='data/spiralNet_exported_model_data.pkl')
 @click.option('--seed', type=int, default=2021)
-def main(description, plot, interactive, export, export_file_path, seed):
+@click.option('--debug', is_flag=True)
+def main(description, plot, interactive, export, export_file_path, seed, debug):
 	data_split_seed = seed
 	network_seed = seed + 1
 	data_order_seed = seed + 2
@@ -685,6 +686,14 @@ def main(description, plot, interactive, export, export_file_path, seed):
 
 	num_classes = 4
 	X_test, y_test, X_train, y_train, test_loader, train_loader = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=plot)
+
+	def train_and_handle_debug(net, description, lr, criterion, train_loader, debug, num_epochs, device):
+		try: 
+			net.train_model(description, lr, criterion, train_loader, debug, num_epochs=num_epochs, device=device)
+		except AssertionError:
+			print("One train step completed.")
+		except Exception as e:
+			print(f"An error occurred: {e}")
 
 	# Train and Test model
 	set_seed(network_seed)
@@ -716,7 +725,10 @@ def main(description, plot, interactive, export, export_file_path, seed):
 			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
 		net.register_hooks()
 
-		net.train_model('backprop', lr_dict[description], criterion, train_loader, num_epochs=num_epochs, device=DEVICE)
+		if debug:
+			train_and_handle_debug(net, 'backprop', lr_dict[description], criterion, train_loader, debug, num_epochs, DEVICE)
+		else:
+			net.train_model('backprop', lr_dict[description], criterion, train_loader, debug, num_epochs=num_epochs, device=DEVICE)
 		
 	elif "dend_temp_contrast" in description:
 		if description == "dend_temp_contrast_learned_bias":
@@ -727,13 +739,17 @@ def main(description, plot, interactive, export, export_file_path, seed):
 			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
 		net.register_hooks()
 
-		net.train_model('dend_temp_contrast', lr_dict[description], criterion, train_loader, num_epochs=num_epochs, verbose=False, device=DEVICE)
+		if debug:
+			train_and_handle_debug(net, 'dend_temp_contrast', lr_dict[description], criterion, train_loader, debug, num_epochs, DEVICE)
+		else:
+			net.train_model('dend_temp_contrast', lr_dict[description], criterion, train_loader, debug, num_epochs=num_epochs, verbose=False, device=DEVICE)
 
 	test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
 
 	if plot:
 		net.display_summary(test_loader, test_acc, title=label_dict[description])
-		net.plot_params(title=label_dict[description])
+		if not debug:
+			net.plot_params(title=label_dict[description])
 		plt.show()
 
 	if export:
