@@ -330,6 +330,9 @@ class Net(nn.Module):
 				elif learning_rule == 'dend_temp_contrast':
 					self.train_dend_temp_contrast(targets, lr)
 
+				elif learning_rule == 'ojas':
+					self.train_ojas(targets, lr)
+
 				self.training_losses.append(loss.item())
 
 				if debug:
@@ -373,6 +376,34 @@ class Net(nn.Module):
 				if self.use_bias and self.learn_bias:
 					self.biases[layer].data += lr * self.nudges[layer].squeeze()
 				prev_layer = layer
+
+	def step_ojas_Rule(self, lr):
+
+		with torch.no_grad():
+			prev_layer = 'Input'
+			for layer in self.layers.keys():
+				self.weights[layer].data += lr * torch.outer(self.nudges[layer].squeeze(), self.forward_activity[prev_layer].squeeze())
+				if self.use_bias and self.learn_bias:
+					self.biases[layer].data += lr * self.nudges[layer].squeeze()
+				prev_layer = layer
+	def train_ojas(self, targets, lr):
+		self.eval()
+		debug = False
+
+		prev_layer = None
+		reverse_layers = list(self.layers.keys())[::-1]
+
+		for layer in reverse_layers:
+			if layer == 'Out':
+				self.nudges[layer] = (2.0 / self.output_feature_num) * self.ReLU_derivative(self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])
+			else:
+				self.forward_dend_state[layer] = self.forward_activity[prev_layer] @ self.weights[prev_layer]
+				self.backward_dend_state[layer] = self.backward_activity[prev_layer] @ self.weights[prev_layer]
+				self.nudges[layer] = self.ReLU_derivative(self.forward_soma_state[layer]) * (self.backward_dend_state[layer] - self.forward_dend_state[layer])
+			self.backward_activity[layer] = self.activation_functions[layer](self.forward_soma_state[layer] + self.nudges[layer])
+			prev_layer = layer
+
+		self.step_ojas_Rule(lr)
 
 	def train_dend_temp_contrast(self, targets, lr):
 		'''
@@ -703,14 +734,20 @@ def main(description, plot, interactive, export, export_file_path, seed, debug):
 			   	'backprop_fixed_bias': 'Backprop Fixed Bias',
 				'dend_temp_contrast_learned_bias': 'Dendritic Temporal Contrast Learned Bias',
 			   	'dend_temp_contrast_zero_bias': 'Dendritic Temporal Contrast Zero Bias', 
-			   	'dend_temp_contrast_fixed_bias': 'Dendritic Temporal Contrast Fixed Bias'}
+			   	'dend_temp_contrast_fixed_bias': 'Dendritic Temporal Contrast Fixed Bias',
+				'ojas_learned_bias': 'Ojas Rule Learned Bias',
+				'ojas_zero_bias': 'Ojas Zero Bias',
+				'ojas_fixed_bias': 'Ojas Fixed Bias',}
 	
 	lr_dict = {'backprop_learned_bias': 0.11,
 			   'backprop_zero_bias': 0.01,
 			   'backprop_fixed_bias': 0.10,
 			   'dend_temp_contrast_learned_bias': 0.11,
 			   'dend_temp_contrast_zero_bias': 0.01,
-			   'dend_temp_contrast_fixed_bias': 0.10}
+			   'dend_temp_contrast_fixed_bias': 0.10,
+			   'ojas_learned_bias': 0.13,
+			   'ojas_zero_bias': 0.01,
+			   'ojas_fixed_bias': 0.10}
 	
 	criterion = "MSELoss"
 	num_epochs = 2
@@ -744,10 +781,24 @@ def main(description, plot, interactive, export, export_file_path, seed, debug):
 		else:
 			net.train_model('dend_temp_contrast', lr_dict[description], criterion, train_loader, debug, num_epochs=num_epochs, verbose=False, device=DEVICE)
 
-	test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
 
+
+	elif "ojas" in description:
+		if description == "ojas_learned_bias":
+			net = Net(nn.ReLU, X_train.shape[1],[128, 32], num_classes, description= description, use_bias=True, learn_bias=True).to(DEVICE)
+		elif description == "ojas_zero_bias":
+			net = Net(nn.ReLU, X_train.shape[1], [128,32], num_classes, description= description, use_bias=False, learn_bias=False).to(DEVICE)
+		elif description == "ojas_fixed_bias":
+			net = Net(nn.ReLU, X_train.shape[1],[128, 32], num_classes, description= description, use_bias=True, learn_bias=False).to(DEVICE)
+		net.register_hooks()
+		if debug:
+			train_and_handle_debug(net, 'ojas', lr_dict[description], criterion, train_loader, debug, num_epochs, DEVICE)
+		else:
+			net.train_model('ojas', lr_dict[description], criterion, train_loader, debug, num_epochs=num_epochs, verbose=False, device=DEVICE)
+
+	test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
 	if plot:
-		net.display_summary(test_loader, test_acc, title=label_dict[description])
+		net.display_summary(test_loader, test_acc,  title=label_dict[description])
 		if not debug:
 			net.plot_params(title=label_dict[description])
 		plt.show()
