@@ -267,12 +267,11 @@ class Net(nn.Module):
 		loss.backward()
 		optimizer.step()
 	
-	def train_model(self, learning_rule, lr, criterion, train_loader, debug=False, num_epochs=1, verbose=False, device='cpu'):
+	def train_model(self, description, lr, criterion, train_loader, debug=False, num_epochs=1, verbose=False, device='cpu'):
 		"""
 		Train model with backprop, accumulate loss, evaluate performance. 
 	
 		Args:
-		- learning_rule (string): Learning rule to train model
 		- lr (float): Learning rate
 		- criterion (torch.nn type): Loss function
 		- optimizer (torch.optim type): Implements Adam or MSELoss algorithm.
@@ -325,10 +324,10 @@ class Net(nn.Module):
 					
 				self.train_labels.append(labels)
 
-				if learning_rule == 'backprop':
+				if 'backprop' in description:
 					self.train_backprop(loss, lr)
-				elif learning_rule == 'dend_temp_contrast':
-					self.train_dend_temp_contrast(targets, lr)
+				elif 'dend' in description:
+					self.train_dend(targets, lr)
 
 				self.training_losses.append(loss.item())
 
@@ -361,34 +360,8 @@ class Net(nn.Module):
 		indexes = torch.where(x <= 0)
 		output[indexes] = 0
 		return output
-
-	def step_dend_temp_contrast(self, lr):
-		# TODO add beta scalars maybe
-
-		with torch.no_grad():
-			prev_layer = 'Input'
-			for layer in self.layers.keys():
-				self.weights[layer].data += lr * torch.outer(self.nudges[layer].squeeze(), self.forward_activity[prev_layer].squeeze())
-				
-				if self.use_bias and self.learn_bias:
-					self.biases[layer].data += lr * self.nudges[layer].squeeze()
-				prev_layer = layer
-
-	def train_dend_temp_contrast(self, targets, lr):
-		'''
-		Train model using Target propogation Temporal contrast learning
-
-		Args:
-		- targets (torch tensor): Target activities for output neurons
-		- lr (float): Learning rate 
-
-		Returns:
-		- Nothing
-		'''	
-
-		self.eval()
-		debug = False
-
+	
+	def backward_dend_temp_contrast(self, targets):
 		prev_layer = None
 		reverse_layers = list(self.layers.keys())[::-1]
 
@@ -403,7 +376,34 @@ class Net(nn.Module):
 			self.backward_activity[layer] = self.activation_functions[layer](self.forward_soma_state[layer] + self.nudges[layer])
 			prev_layer = layer
 
-		self.step_dend_temp_contrast(lr)
+	def step_dend_temp_contrast(self, lr):
+		# TODO add beta scalars maybe
+
+		with torch.no_grad():
+			prev_layer = 'Input'
+			for layer in self.layers.keys():
+				self.weights[layer].data += lr * torch.outer(self.nudges[layer].squeeze(), self.forward_activity[prev_layer].squeeze())
+				
+				if self.use_bias and self.learn_bias:
+					self.biases[layer].data += lr * self.nudges[layer].squeeze()
+				prev_layer = layer
+
+	def train_dend(self, targets, lr):
+		'''
+		Train model using Target propogation Temporal contrast learning
+
+		Args:
+		- targets (torch tensor): Target activities for output neurons
+		- lr (float): Learning rate 
+
+		Returns:
+		- Nothing
+		'''	
+		self.eval()
+		if 'dend_temp_contrast' in self.description:
+			self.backward_dend_temp_contrast(targets)
+			self.step_dend_temp_contrast(lr)
+		# Oja's rule elif statement goes here
 
 	def test_model(self, test_loader, verbose=True, device='cpu'):
 		'''
@@ -723,12 +723,6 @@ def main(description, plot, interactive, export, export_file_path, seed, debug):
 			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=False, learn_bias=False).to(DEVICE)
 		elif description == 'backprop_fixed_bias':
 			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
-
-		if debug:
-			net.register_hooks()
-			train_and_handle_debug(net, 'backprop', lr_dict[description], criterion, train_loader, debug, num_epochs, DEVICE)
-		else:
-			net.train_model('backprop', lr_dict[description], criterion, train_loader, debug=debug, num_epochs=num_epochs, device=DEVICE)
 		
 	elif "dend_temp_contrast" in description:
 		if description == "dend_temp_contrast_learned_bias":
@@ -738,11 +732,11 @@ def main(description, plot, interactive, export, export_file_path, seed, debug):
 		elif description == "dend_temp_contrast_fixed_bias":
 			net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
 
-		if debug:
-			net.register_hooks()
-			train_and_handle_debug(net, 'dend_temp_contrast', lr_dict[description], criterion, train_loader, debug, num_epochs, DEVICE)
-		else:
-			net.train_model('dend_temp_contrast', lr_dict[description], criterion, train_loader, debug=debug, num_epochs=num_epochs, verbose=False, device=DEVICE)
+	if debug:
+		net.register_hooks()
+		train_and_handle_debug(net, description, lr_dict[description], criterion, train_loader, debug, num_epochs, DEVICE)
+	else:
+		net.train_model(description, lr_dict[description], criterion, train_loader, debug=debug, num_epochs=num_epochs, device=DEVICE)
 
 	test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
 
