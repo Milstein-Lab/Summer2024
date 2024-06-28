@@ -158,6 +158,10 @@ class Net(nn.Module):
 		if 'dend_EI_contrast' in self.description:
 			self.recurrent_layers = {}
 			self.recurrent_weights = {}
+			for i, num in enumerate(self.hidden_unit_nums):
+				layer = f'H{i+1}'
+				self.recurrent_layers[layer] = nn.Linear(num, num, bias=False)
+				self.recurrent_weights[layer] = self.recurrent_layers[layer].weight
 
 		self.hooked_grads = {}
 
@@ -416,18 +420,13 @@ class Net(nn.Module):
 	def backward_dend_EI_contrast(self, targets):
 		reverse_layers = list(self.layers.keys())[::-1]
 
-		for i, num in enumerate(self.hidden_unit_nums):
-			layer = f'H{i+1}'
-			self.recurrent_layers[layer] = nn.Linear(num, num, bias=False)
-			self.recurrent_weights[layer] = self.recurrent_layers[layer].weight
-
 		for idx, layer in enumerate(reverse_layers):
 			if layer == 'Out':
 				self.nudges[layer] = (2.0 / self.output_feature_num) * self.ReLU_derivative(self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])
 			else:
 				upper_layer = reverse_layers[idx-1]
-				self.forward_dend_state[layer] = self.forward_activity[upper_layer] @ self.weights[upper_layer] + self.forward_activity[layer] @ self.recurrent_weights[layer]
-				self.backward_dend_state[layer] = self.backward_activity[upper_layer] @ self.weights[upper_layer] + self.forward_activity[layer] @ self.recurrent_weights[layer]
+				self.forward_dend_state[layer] = self.forward_activity[upper_layer] @ self.weights[upper_layer] + self.recurrent_layers[layer](self.forward_activity[layer])
+				self.backward_dend_state[layer] = self.backward_activity[upper_layer] @ self.weights[upper_layer] + self.recurrent_layers[layer](self.forward_activity[layer])
 				self.nudges[layer] = self.backward_dend_state[layer] * self.ReLU_derivative(self.forward_soma_state[layer])
 			self.backward_activity[layer] = self.activation_functions[layer](self.forward_soma_state[layer] + self.nudges[layer])
 
@@ -436,7 +435,8 @@ class Net(nn.Module):
 			lower_layer = 'Input'
 			for layer in self.layers.keys():
 				self.weights[layer].data += lr * torch.outer(self.nudges[layer].squeeze(), self.forward_activity[lower_layer].squeeze())
-				self.recurrent_weights[layer].data += -1 * lr * self.forward_dend_state[layer].T @ self.forward_activity[lower_layer]
+				if layer != 'Out':
+					self.recurrent_weights[layer].data += -1 * lr * self.forward_dend_state[layer].T @ self.forward_activity[layer]
 				if self.use_bias and self.learn_bias:
 					self.biases[layer].data += lr * self.nudges[layer].squeeze()
 				lower_layer = layer
@@ -792,7 +792,7 @@ def main(description, plot, interactive, export, export_file_path, seed, debug, 
 			   'ojas_dend_fixed_bias': 0.10,
 			   'dend_EI_contrast_learned_bias': 0.11, 
 			   'dend_EI_contrast_zero_bias': 0.01, 
-			   'dend_EI_contrast_fixed_bias': 0.10}
+			   'dend_EI_contrast_fixed_bias': 0.01}
 	
 	criterion = "MSELoss"
 	num_epochs = 2
