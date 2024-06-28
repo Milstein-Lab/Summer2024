@@ -15,6 +15,7 @@ import random
 import pickle
 import os
 import click
+import traceback
 
 # set_seed() and seed_worker()
 def set_seed(seed=None, seed_torch=True, verbose=False):
@@ -393,15 +394,6 @@ class Net(nn.Module):
 			prev_layer = layer
 
 	def step_dend_temp_contrast(self, lr):
-		'''
-		Step function for Dendritic Temporal Contrast.
-
-		Args:
-		- lr (float): Learning rate
-
-		Return:
-		- Nothing
-		'''
 		# add beta scalars?
 		with torch.no_grad():
 			prev_layer = 'Input'
@@ -422,38 +414,32 @@ class Net(nn.Module):
 				prev_layer = layer
 
 	def backward_dend_EI_contrast(self, targets):
-		prev_layer = None
-		next_layer = None
 		reverse_layers = list(self.layers.keys())[::-1]
 
 		for i, num in enumerate(self.hidden_unit_nums):
-			layer = f'H{i}'
+			layer = f'H{i+1}'
 			self.recurrent_layers[layer] = nn.Linear(num, num, bias=False)
 			self.recurrent_weights[layer] = self.recurrent_layers[layer].weight
 
 		for idx, layer in enumerate(reverse_layers):
-			next_layer = reverse_layers[idx - 1] if idx > 0 else None
-
 			if layer == 'Out':
 				self.nudges[layer] = (2.0 / self.output_feature_num) * self.ReLU_derivative(self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])
 			else:
-				if next_layer is not None:
-					self.forward_dend_state[layer] = self.forward_activity[next_layer] @ self.weights[layer] + self.forward_activity[layer] @ self.recurrent_weights[layer]
-				if prev_layer is not None:
-					self.backward_activity[layer] = self.activation_functions[layer](self.forward_soma_state[layer] + self.nudges[layer])
-				self.backward_dend_state[layer] = self.backward_activity[next_layer] @ self.weights[layer] + self.forward_activity[layer] @ self.recurrent_weights[layer]
+				upper_layer = reverse_layers[idx-1]
+				self.forward_dend_state[layer] = self.forward_activity[upper_layer] @ self.weights[upper_layer] + self.forward_activity[layer] @ self.recurrent_weights[layer]
+				self.backward_dend_state[layer] = self.backward_activity[upper_layer] @ self.weights[upper_layer] + self.forward_activity[layer] @ self.recurrent_weights[layer]
 				self.nudges[layer] = self.backward_dend_state[layer] * self.ReLU_derivative(self.forward_soma_state[layer])
-			prev_layer = layer
+			self.backward_activity[layer] = self.activation_functions[layer](self.forward_soma_state[layer] + self.nudges[layer])
 
 	def step_dend_EI_contrast(self, lr):
 		with torch.no_grad():
-			prev_layer = 'Input'
+			lower_layer = 'Input'
 			for layer in self.layers.keys():
-				self.weights[layer].data += lr * torch.outer(self.nudges[layer].squeeze(), self.forward_activity[prev_layer].squeeze())
-				self.recurrent_weights[layer].data += -1 * lr * self.forward_dend_state[layer] @ self.forward_activity[prev_layer]
+				self.weights[layer].data += lr * torch.outer(self.nudges[layer].squeeze(), self.forward_activity[lower_layer].squeeze())
+				self.recurrent_weights[layer].data += -1 * lr * self.forward_dend_state[layer].T @ self.forward_activity[lower_layer]
 				if self.use_bias and self.learn_bias:
 					self.biases[layer].data += lr * self.nudges[layer].squeeze()
-				prev_layer = layer
+				lower_layer = layer
 
 	def train_dend(self, description, targets, lr):
 		'''
@@ -777,7 +763,7 @@ def main(description, plot, interactive, export, export_file_path, seed, debug, 
 		except AssertionError:
 			print(f"{num_train_steps} train steps completed.")
 		except Exception as e:
-			print(f"An error occurred: {e}")
+			traceback.print_exc()
 
 	# Train and Test model
 	set_seed(network_seed)
@@ -826,9 +812,8 @@ def main(description, plot, interactive, export, export_file_path, seed, debug, 
 		net.train_model(description, lr_dict[description], criterion, train_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=DEVICE)
 		test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
 
-	if plot and not debug:
-		net.display_summary(test_loader, test_acc,  title=label_dict[description], save_path="figures")
-		if not debug:
+		if plot:
+			net.display_summary(test_loader, test_acc,  title=label_dict[description], save_path="figures")
 			net.plot_params(title=label_dict[description], save_path="figures")
 
 	if export:
