@@ -498,7 +498,7 @@ class Net(nn.Module):
 
 		return decision_map.T
 
-	def display_summary(self, test_loader, test_acc, title=None):
+	def display_summary(self, test_loader, test_acc, title=None, save_path=None):
 		'''
 		Display network summary
 
@@ -571,9 +571,13 @@ class Net(nn.Module):
 			fig.suptitle('Class Averaged Activity')
 
 		fig.tight_layout()
-		fig.show()
+		
+		if save_path is not None:
+			fig.savefig(f'{save_path}/summary.png', bbox_inches='tight')
+		else:
+			fig.show()
 
-	def plot_params(self, title=None):
+	def plot_params(self, title=None, save_path=None):
 		'''
 		Plot initial and final weights and biases for all layers.
 
@@ -622,7 +626,11 @@ class Net(nn.Module):
 		if title is not None:
 			fig.suptitle(title)
 		fig.tight_layout()
-		fig.show()
+
+		if save_path is not None:
+			fig.savefig(f'{save_path}/parameters.png', bbox_inches='tight')
+		else:
+			fig.show()
 
 
 def sample_grid(M=500, x_max=2.0):
@@ -730,7 +738,7 @@ def main(description, plot, interactive, export, export_file_path, seed, debug):
 	local_torch_random = torch.Generator()
 
 	num_classes = 4
-	X_test, y_test, X_train, y_train, test_loader, train_loader = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=plot)
+	X_test, y_test, X_train, y_train, test_loader, train_loader = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=False)
 
 	def train_and_handle_debug(net, description, lr, criterion, train_loader, debug, num_epochs, device):
 		try: 
@@ -783,10 +791,9 @@ def main(description, plot, interactive, export, export_file_path, seed, debug):
 	test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
 
 	if plot:
-		net.display_summary(test_loader, test_acc,  title=label_dict[description])
+		net.display_summary(test_loader, test_acc,  title=label_dict[description], save_path="figures")
 		if not debug:
-			net.plot_params(title=label_dict[description])
-		plt.show()
+			net.plot_params(title=label_dict[description], save_path="figures")
 
 	if export:
 		if os.path.isfile(export_file_path):

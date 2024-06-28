@@ -15,7 +15,7 @@ def main():
 	spiral.set_seed(network_seed)
 	local_torch_random.manual_seed(data_order_seed)
 
-	with open("C:/Yash Dev/Summer2024/data/spiralNet_exported_model_data.pkl", "rb") as f:
+	with open("data/spiralNet_exported_model_data.pkl", "rb") as f:
 		model_data_dict = pickle.load(f)
 
 	num_classes = 4
