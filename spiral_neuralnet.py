@@ -330,6 +330,8 @@ class Net(nn.Module):
 				elif 'dend' in description:
 					self.train_dend(description, targets, lr)
 
+				# store a copy of the weights in a weight_history dict
+
 				# Track losses
 				self.training_losses.append(loss.item())
 
@@ -387,6 +389,8 @@ class Net(nn.Module):
 			self.backward_activity[layer] = self.activation_functions[layer](self.forward_soma_state[layer] + self.nudges[layer])
 			prev_layer = layer
 
+		# store a copy of nudges and dendritic states
+
 	def step_dend_temp_contrast(self, lr):
 		'''
 		Step function for Dendritic Temporal Contrast.
@@ -413,7 +417,7 @@ class Net(nn.Module):
 		with torch.no_grad():
 			prev_layer = 'Input'
 			for layer in self.layers.keys():
-				self.weights[layer].data += lr * torch.outer(self.nudges[layer].squeeze(), self.forward_activity[prev_layer].squeeze())
+				self.weights[layer].data += lr * self.backward_activity[layer].T * (np.sign(self.weights[layer].data) * self.forward_activity[prev_layer] - self.backward_activity[layer].T * self.weights[layer].data)
 				if self.use_bias and self.learn_bias:
 					self.biases[layer].data += lr * self.nudges[layer].squeeze()
 				prev_layer = layer
@@ -761,7 +765,7 @@ def main(description, plot, interactive, export, export_file_path, seed, debug):
 			   'dend_temp_contrast_fixed_bias': 0.10,
 			   'ojas_dend_learned_bias': 0.13,
 			   'ojas_dend_zero_bias': 0.01,
-			   'ojas_dend_fixed_bias': 0.10}
+			   'ojas_dend_fixed_bias': 0.021}
 	
 	criterion = "MSELoss"
 	num_epochs = 2

@@ -25,17 +25,17 @@ def main(description, seed, export, export_file_path):
 				  'dend_temp_contrast_learned_bias': 'Dendritic Temporal Contrast Learned Bias',
 				  'dend_temp_contrast_zero_bias': 'Dendritic Temporal Contrast Zero Bias',
 				  'dend_temp_contrast_fixed_bias': 'Dendritic Temporal Contrast Fixed Bias',
-				  'ojas_learned_bias': 'Ojas Rule Learned Bias',
-				  'ojas_zero_bias': 'Ojas Zero Bias',
-				  'ojas_fixed_bias': 'Ojas Fixed Bias', }
+				  'ojas_dend_learned_bias': 'Ojas Rule Learned Bias',
+				  'ojas_dend_zero_bias': 'Ojas Zero Bias',
+				  'ojas_dend_fixed_bias': 'Ojas Fixed Bias', }
 
 	num_classes = 4
 	X_test, y_test, X_train, y_train, test_loader, train_loader = spiral.generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=False)
 
 	accuracy_history = []
-	start = 0.01
-	end = 0.2
-	step = 0.01
+	start = 0.005
+	end = 0.022
+	step = 0.001
 	learning_rates = np.arange(start, end + step, step)
 	criterion = "MSELoss"
 	num_epochs = 2
