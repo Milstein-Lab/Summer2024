@@ -291,11 +291,20 @@ class Net(nn.Module):
 
 		# Create dictionaries for train state and activities
 		self.forward_soma_state_train_history = {}
-		self.forward_activity_train_history = {} 
+		self.forward_activity_train_history = {}
+		self.forward_dend_state_train_history = {}
+		self.backward_dend_state_train_history = {}
+		self.nudges_train_history = {}
+		self.weights_train_history = {}
 		self.forward_activity_train_history['Input'] = []
 		for key, layer in self.layers.items():
 			self.forward_soma_state_train_history[key] = []
 			self.forward_activity_train_history[key] = []
+			self.forward_dend_state_train_history[key] = []
+			self.backward_dend_state_train_history[key] = []
+			self.nudges_train_history[key] = []
+			self.weights_train_history[key] = []
+
 
 		self.train_labels = []
 
@@ -335,6 +344,11 @@ class Net(nn.Module):
 					self.train_dend(description, targets, lr)
 
 				# store a copy of the weights in a weight_history dict
+				for key, layer in self.weights.items():
+					self.weights_train_history[key].append(self.weights[key])
+
+
+
 
 				# Track losses
 				self.training_losses.append(loss.item())
@@ -349,6 +363,15 @@ class Net(nn.Module):
 		for key, layer in self.layers.items():
 			self.forward_soma_state_train_history[key] = torch.stack(self.forward_soma_state_train_history[key]).squeeze()
 			self.forward_activity_train_history[key] = torch.stack(self.forward_activity_train_history[key]).squeeze()
+			if self.forward_dend_state_train_history[key]:
+				self.forward_dend_state_train_history[key] = torch.stack(self.forward_dend_state_train_history[key]).squeeze()
+			if self.backward_dend_state_train_history[key]:
+				self.backward_dend_state_train_history[key] = torch.stack(self.backward_dend_state_train_history[key]).squeeze()
+			if self.nudges_train_history[key]:
+				self.nudges_train_history[key] = torch.stack(self.nudges_train_history[key]).squeeze()
+			if self.weights_train_history[key]:
+				self.weights_train_history[key] = torch.stack(self.weights_train_history[key]).squeeze()
+
 		self.train_labels = torch.stack(self.train_labels)
 		
 		self.eval()
@@ -387,10 +410,14 @@ class Net(nn.Module):
 		for layer in reverse_layers:
 			if layer == 'Out':
 				self.nudges[layer] = (2.0 / self.output_feature_num) * self.ReLU_derivative(self.forward_soma_state[layer]) * (targets - self.forward_activity['Out']) # the ReLU derivative term is dA/dz
+				self.nudges_train_history[layer].append(self.nudges[layer])
 			else:
 				self.forward_dend_state[layer] = self.forward_activity[prev_layer] @ self.weights[prev_layer]
 				self.backward_dend_state[layer] = self.backward_activity[prev_layer] @ self.weights[prev_layer]
 				self.nudges[layer] = self.ReLU_derivative(self.forward_soma_state[layer]) * (self.backward_dend_state[layer] - self.forward_dend_state[layer])
+				self.forward_dend_state_train_history[layer].append(self.nudges[layer])
+				self.backward_dend_state_train_history[layer].append(self.backward_dend_state[layer])
+				self.nudges_train_history[layer].append(self.nudges[layer])
 
 			self.backward_activity[layer] = self.activation_functions[layer](self.forward_soma_state[layer] + self.nudges[layer])
 			prev_layer = layer
@@ -403,7 +430,6 @@ class Net(nn.Module):
 			prev_layer = 'Input'
 			for layer in self.layers.keys():
 				self.weights[layer].data += lr * torch.outer(self.nudges[layer].squeeze(), self.forward_activity[prev_layer].squeeze())
-				
 				if self.use_bias and self.learn_bias:
 					self.biases[layer].data += lr * self.nudges[layer].squeeze()
 				prev_layer = layer
@@ -794,7 +820,6 @@ def main(description, plot, interactive, export, export_file_path, seed, debug, 
 			   'ojas_dend_learned_bias': 0.13,
 			   'ojas_dend_zero_bias': 0.01,
 			   'ojas_dend_fixed_bias': 0.021,
-			   'ojas_dend_fixed_bias': 0.10,
 			   'dend_EI_contrast_learned_bias': 0.11,
 			   'dend_EI_contrast_zero_bias': 0.01,
 			   'dend_EI_contrast_fixed_bias': 0.10}
