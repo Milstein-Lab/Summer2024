@@ -603,7 +603,7 @@ class Net(nn.Module):
             if key == 'Out':
                 this_sorted_indices = torch.arange(self.output_feature_num)
             else:
-                this_sorted_indices = max_indices.argsort()
+                values_sorted, this_sorted_indices = torch.sort(max_indices, stable=True)
 
             class_averaged_activity[key] = this_class_averaged_activity
             sorted_indices_layers[key] = this_sorted_indices
