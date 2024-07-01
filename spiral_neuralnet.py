@@ -309,7 +309,6 @@ class Net(nn.Module):
 			self.nudges_train_history[key] = []
 			self.weights_train_history[key] = []
 
-
 		self.train_labels = []
 
 		for epoch in tqdm(range(num_epochs)):  # Loop over the dataset multiple times
@@ -351,9 +350,6 @@ class Net(nn.Module):
 				for key, layer in self.weights.items():
 					self.weights_train_history[key].append(self.weights[key])
 
-
-
-
 				# Track losses
 				self.training_losses.append(loss.item())
 
@@ -363,7 +359,7 @@ class Net(nn.Module):
 					if train_steps == num_train_steps:
 						assert False
 
-		# Squeeze all state and activity tensors
+		# Squeeze all history tensors
 		for key, layer in self.layers.items():
 			self.forward_soma_state_train_history[key] = torch.stack(self.forward_soma_state_train_history[key]).squeeze()
 			self.forward_activity_train_history[key] = torch.stack(self.forward_activity_train_history[key]).squeeze()
