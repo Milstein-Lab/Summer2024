@@ -301,7 +301,7 @@ class Net(nn.Module):
         acc = 100 * correct / total
         return total, acc
     
-    def train_model(self, description, lr, criterion, train_loader, debug=False, num_train_steps=None, num_epochs=1, verbose=False, device='cpu'):
+    def train_model(self, description, lr, criterion, train_loader, test_loader, debug=False, num_train_steps=None, num_epochs=1, verbose=False, device='cpu'):
         """
         Train model with backprop, accumulate loss, evaluate performance
     
@@ -322,7 +322,9 @@ class Net(nn.Module):
         self.to(device)
         self.train()
         self.training_losses = []
-        train_steps = 0
+        train_step = 0
+        self.averaged_accuracy = []
+        self.train_steps_list = []
 
         # Create dictionaries for train state and activities
         self.forward_soma_state_train_history = {}
@@ -354,6 +356,11 @@ class Net(nn.Module):
                 inputs, labels = data
                 inputs = inputs.to(device).float()
                 labels = labels.to(device).long()
+
+                if train_step % 100 == 0:
+                    _, acc = self.test(test_loader, device)
+                    self.averaged_accuracy.append(acc)
+                    self.train_steps_list.append(train_step)
 
                 # forward pass
                 outputs = self.forward(inputs, test=False)
@@ -394,9 +401,9 @@ class Net(nn.Module):
                 self.training_losses.append(loss.item())
 
                 # Stop after one certain number of train step
-                train_steps += 1
+                train_step += 1
                 if debug and num_train_steps is not None:
-                    if train_steps == num_train_steps:
+                    if train_step == num_train_steps:
                         assert False
 
         # Squeeze all history tensors
@@ -668,9 +675,9 @@ class Net(nn.Module):
             axes[0][i].set_xticks(range(this_class_averaged_activity.shape[0]))
             axes[0][i].set_xticklabels(range(this_class_averaged_activity.shape[0]))
 
-        axes[1][0].plot(self.training_losses, label=f"Test Accuracy: {test_acc}")
+        axes[1][0].plot(self.train_steps_list, self.averaged_accuracy, label=f"Test Accuracy: {test_acc}")
         axes[1][0].set_xlabel('Train Steps')
-        axes[1][0].set_ylabel('Training Loss')
+        axes[1][0].set_ylabel('Accuracy (%)')
         axes[1][0].legend(loc='best', frameon=False)
 
         map = self.get_decision_map(inputs, labels, self.output_feature_num)
@@ -874,9 +881,9 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
 
     X_test, y_test, X_train, y_train, test_loader, train_loader, data_fig = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=show_plot or save_plot)
 
-    def train_and_handle_debug(net, description, lr, criterion, train_loader, debug, num_train_steps, num_epochs, device):
+    def train_and_handle_debug(net, description, lr, criterion, train_loader, test_loader, debug, num_train_steps, num_epochs, device):
         try:
-            net.train_model(description, lr, criterion, train_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=device)
+            net.train_model(description, lr, criterion, train_loader, test_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=device)
         except AssertionError:
             print(f"{num_train_steps} train steps completed.")
         except Exception as e:
@@ -933,9 +940,9 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
     
     if debug:
         net.register_hooks()
-        train_and_handle_debug(net, description, lr_dict[description], criterion, train_loader, debug, num_train_steps, num_epochs, DEVICE)
+        train_and_handle_debug(net, description, lr_dict[description], criterion, train_loader, test_loader, debug, num_train_steps, num_epochs, DEVICE)
     else:
-        train_acc = net.train_model(description, lr_dict[description], criterion, train_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=DEVICE)
+        train_acc = net.train_model(description, lr_dict[description], criterion, train_loader, test_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=DEVICE)
         test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
 
         plot_title = label_dict[description]
