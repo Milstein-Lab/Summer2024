@@ -576,7 +576,7 @@ class Net(nn.Module):
 
         return decision_map.T
 
-    def display_summary(self, test_loader, test_acc, title=None, save_path=None):
+    def display_summary(self, test_loader, test_acc, title=None, save_path=None, show_plot=False):
         '''
         Display network summary
 
@@ -652,9 +652,12 @@ class Net(nn.Module):
 
         if save_path is not None:
             fig.savefig(f'{save_path}/summary_{self.description}.png', bbox_inches='tight')
-        plt.show()
+        if show_plot:
+            plt.show()
 
-    def plot_params(self, title=None, save_path=None):
+        return fig
+
+    def plot_params(self, title=None, save_path=None, show_plot=False):
         '''
         Plot initial and final weights and biases for all layers.
 
@@ -706,7 +709,10 @@ class Net(nn.Module):
 
         if save_path is not None:
             fig.savefig(f'{save_path}/parameters_{self.description}.png', bbox_inches='tight')
-        fig.show()
+        if show_plot:
+            plt.show()
+    
+        return fig
 
 
 def sample_grid(M=500, x_max=2.0):
@@ -729,7 +735,7 @@ def sample_grid(M=500, x_max=2.0):
     return X_all
 
 
-def generate_data(K=4, sigma=0.16, N=1000, save_path=None, seed=None, gen=None, display=True):
+def generate_data(K=4, sigma=0.16, N=1000, seed=None, gen=None, display=True):
     '''
     Generate spiral dataset for training and testing a neural network.
 
@@ -770,6 +776,7 @@ def generate_data(K=4, sigma=0.16, N=1000, save_path=None, seed=None, gen=None, 
     X_train = X[test_size:]
     y_train = y[test_size:]
 
+    fig = None
     if display:
         fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(8, 4))
         axes[0].scatter(X[:, 0], X[:, 1], c = y, s=10)
@@ -784,10 +791,6 @@ def generate_data(K=4, sigma=0.16, N=1000, save_path=None, seed=None, gen=None, 
 
         fig.tight_layout()
 
-        if save_path is not None:
-            fig.savefig(f'{save_path}/data.png', bbox_inches='tight')
-        fig.show()
-
     # Train and test DataLoaders
     if gen is None:
         gen = torch.Generator()
@@ -799,7 +802,7 @@ def generate_data(K=4, sigma=0.16, N=1000, save_path=None, seed=None, gen=None, 
     train_loader = DataLoader(train_data, batch_size=batch_size, drop_last=True, shuffle=True, num_workers=0,
                             worker_init_fn=seed_worker, generator=gen)
     
-    return X_test, y_test, X_train, y_train, test_loader, train_loader
+    return X_test, y_test, X_train, y_train, test_loader, train_loader, fig
 
 
 @click.command()
@@ -826,7 +829,7 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
     else:
         save_path = None
 
-    X_test, y_test, X_train, y_train, test_loader, train_loader = generate_data(K=num_classes, save_path=save_path, seed=data_split_seed, gen=local_torch_random, display=show_plot)
+    X_test, y_test, X_train, y_train, test_loader, train_loader, data_fig = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=show_plot or save_plot)
 
     def train_and_handle_debug(net, description, lr, criterion, train_loader, debug, num_train_steps, num_epochs, device):
         try:
@@ -865,7 +868,6 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                'dend_EI_contrast_zero_bias': 0.01,
                'dend_EI_contrast_fixed_bias': 0.031}
 
-    
     criterion = "MSELoss"
     num_epochs = 2
     local_torch_random.manual_seed(data_order_seed)
@@ -884,12 +886,20 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
         net.train_model(description, lr_dict[description], criterion, train_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=DEVICE)
         test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
 
-        if show_plot or save_plot:
-            plot_title = label_dict[description]
-            net.display_summary(test_loader, test_acc, title=plot_title, save_path=save_path)
-            net.plot_params(title=plot_title, save_path=save_path)
+        plot_title = label_dict[description]
+        summary_fig = net.display_summary(test_loader, test_acc, title=plot_title, save_path=None, show_plot=False)
+        params_fig = net.plot_params(title=plot_title, save_path=None, show_plot=False)
+
+        if save_plot:
+            data_fig.savefig(f'{save_path}/data.png', bbox_inches='tight')
+            summary_fig.savefig(f'{save_path}/summary_{description}.png', bbox_inches='tight')
+            params_fig.savefig(f'{save_path}/params_{description}.png', bbox_inches='tight')
+
         if show_plot:
-            plt.show()  
+            plt.figure(data_fig.number)
+            plt.figure(summary_fig.number)
+            plt.figure(params_fig.number)
+            plt.show() 
 
     if export:
         if os.path.isfile(export_file_path):
