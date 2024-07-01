@@ -459,8 +459,7 @@ class Net(nn.Module):
         for layer in reverse_layers:
             if layer == 'Out':
                 self.nudges[layer] = (2.0 / self.output_feature_num) * self.ReLU_derivative(
-                    self.forward_soma_state[layer]) * (targets - self.forward_activity[
-                    'Out'])  # the ReLU derivative term is dA/dz
+                    self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])  # the ReLU derivative term is dA/dz
                 self.nudges_train_history[layer].append(self.nudges[layer])
             else:
                 self.forward_dend_state[layer] = self.forward_activity[prev_layer] @ self.weights[prev_layer]
@@ -471,8 +470,7 @@ class Net(nn.Module):
                 self.backward_dend_state_train_history[layer].append(self.backward_dend_state[layer])
                 self.nudges_train_history[layer].append(self.nudges[layer])
             
-            self.backward_activity[layer] = self.activation_functions[layer](
-                self.forward_soma_state[layer] + self.nudges[layer])
+            self.backward_activity[layer] = self.activation_functions[layer](self.forward_soma_state[layer] + self.nudges[layer])
             prev_layer = layer
 
     def backward_ojas(self, targets):
@@ -525,24 +523,18 @@ class Net(nn.Module):
                     self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])
             else:
                 upper_layer = reverse_layers[idx - 1]
-                self.forward_dend_state[layer] = self.forward_activity[upper_layer] @ self.weights[upper_layer] + \
-                                                 self.recurrent_layers[layer](self.forward_activity[layer])
-                self.backward_dend_state[layer] = self.backward_activity[upper_layer] @ self.weights[upper_layer] + \
-                                                  self.recurrent_layers[layer](self.forward_activity[layer])
-                self.nudges[layer] = self.backward_dend_state[layer] * self.ReLU_derivative(
-                    self.forward_soma_state[layer])
-            self.backward_activity[layer] = self.activation_functions[layer](
-                self.forward_soma_state[layer] + self.nudges[layer])
+                self.forward_dend_state[layer] = self.forward_activity[upper_layer] @ self.weights[upper_layer] + self.recurrent_layers[layer](self.forward_activity[layer])
+                self.backward_dend_state[layer] = self.backward_activity[upper_layer] @ self.weights[upper_layer] + self.recurrent_layers[layer](self.forward_activity[layer])
+                self.nudges[layer] = self.backward_dend_state[layer] * self.ReLU_derivative(self.forward_soma_state[layer])
+            self.backward_activity[layer] = self.activation_functions[layer](self.forward_soma_state[layer] + self.nudges[layer])
     
     def step_dend_EI_contrast(self, lr):
         with torch.no_grad():
             lower_layer = 'Input'
             for layer in self.layers.keys():
-                self.weights[layer].data += lr * torch.outer(self.nudges[layer].squeeze(),
-                                                             self.forward_activity[lower_layer].squeeze())
+                self.weights[layer].data += lr * torch.outer(self.nudges[layer].squeeze(), self.forward_activity[lower_layer].squeeze())
                 if layer != 'Out':
-                    self.recurrent_weights[layer].data += -1 * lr * self.forward_dend_state[layer].T @ \
-                                                          self.forward_activity[layer]
+                    self.recurrent_weights[layer].data += -1 * lr * self.forward_dend_state[layer].T @ self.forward_activity[layer]
                 if self.use_bias and self.learn_bias:
                     self.biases[layer].data += lr * self.nudges[layer].squeeze()
                 lower_layer = layer
@@ -875,7 +867,9 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
     num_classes = 4
     if save_plot:
         save_path = "figures"
+        svg_save_path = "svg_figures"
         os.makedirs(save_path, exist_ok=True)
+        os.makedirs(svg_save_path, exist_ok=True)
     else:
         save_path = None
 
@@ -950,9 +944,12 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
         params_fig = net.plot_params(title=plot_title, save_path=None, show_plot=False)
 
         if save_plot:
-            data_fig.savefig(f'{save_path}/data.png', bbox_inches='tight')
-            summary_fig.savefig(f'{save_path}/summary_{description}.png', bbox_inches='tight')
-            params_fig.savefig(f'{save_path}/params_{description}.png', bbox_inches='tight')
+            data_fig.savefig(f'{save_path}/data.png', bbox_inches='tight', format='png')
+            data_fig.savefig(f'{svg_save_path}/data.svg', bbox_inches='tight', format='svg')
+            summary_fig.savefig(f'{save_path}/summary_{description}.png', bbox_inches='tight', format='png')
+            summary_fig.savefig(f'{svg_save_path}/summary_{description}.svg', bbox_inches='tight', format='svg')
+            params_fig.savefig(f'{save_path}/params_{description}.png', bbox_inches='tight', format='png')
+            params_fig.savefig(f'{svg_save_path}/params_{description}.svg', bbox_inches='tight', format='svg')
 
         if show_plot:
             plt.figure(data_fig.number)
