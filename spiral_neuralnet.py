@@ -252,7 +252,7 @@ class Net(nn.Module):
         Function to gauge network performance
     
         Args:
-        - data_loader (torch.utils.data type): Combines the test dataset and sampler, and provides an iterable over the given dataset.
+        - data_loader (torch.utils.data type): Combines the test dataset and sampler, and provides an iterable over the given dataset
         - device (string): CUDA/GPU if available, CPU otherwise
     
         Returns:
@@ -276,21 +276,21 @@ class Net(nn.Module):
     
     def train_model(self, description, lr, criterion, train_loader, debug=False, num_train_steps=None, num_epochs=1, verbose=False, device='cpu'):
         """
-        Train model with backprop, accumulate loss, evaluate performance.
+        Train model with backprop, accumulate loss, evaluate performance
     
         Args:
+        - description (string): Description of model to train
         - lr (float): Learning rate
         - criterion (torch.nn type): Loss function
-        - optimizer (torch.optim type): Implements Adam or MSELoss algorithm.
-        - train_loader (torch.utils.data type): Combines the train dataset and sampler, and provides an iterable over the given dataset.
+        - train_loader (torch.utils.data type): Combines the train dataset and sampler, and provides an iterable over the given dataset
         - debug (boolean): If True, enters debug mode.
-        - num_train_steps (int): Stops train loop after specified number of steps.
+        - num_train_steps (int): Stops train loop after specified number of steps
         - num_epochs (int): Number of epochs [default: 1]
         - verbose (boolean): If True, print statistics
         - device (string): CUDA/GPU if available, CPU otherwise
     
         Returns:
-        - Nothing
+        - train_acc (int): Accuracy of model on train data
         """
         self.to(device)
         self.train()
@@ -511,6 +511,7 @@ class Net(nn.Module):
         - Dendritic Excitatory-Inhibitory (EI) Contrast
 
         Args:
+        - description (string): Description of model to train
         - targets (torch tensor): Target activities for output neurons
         - lr (float): Learning rate
 
@@ -533,12 +534,12 @@ class Net(nn.Module):
         Evaluate performance
 
         Args:
-        - test_loader (torch.utils.data type): Combines the test dataset and sampler, and provides an iterable over the given dataset.
+        - test_loader (torch.utils.data type): Combines the test dataset and sampler, and provides an iterable over the given dataset
         - verbose (boolean): If True, print statistics
         - device (string): CUDA/GPU if available, CPU otherwise
 
         Returns:
-        - Nothing
+        - test_acc (int): Accuracy of model on test data
         '''
         self.to(device)
         test_total, test_acc = self.test(test_loader, device)
@@ -561,7 +562,7 @@ class Net(nn.Module):
         - eps (float): Decision threshold
     
         Returns:
-        - Nothing
+        - decision_map.T (torch.Tensor): Decision map transpose to use in graph
         """
         X_all = sample_grid()
         y_pred = self.forward(X_all.to(DEVICE), store=False).cpu()
@@ -581,12 +582,14 @@ class Net(nn.Module):
         Display network summary
 
         Args:
-        - test_loader (torch.utils.data type): Combines the test dataset and sampler, and provides an iterable over the given dataset.
-        - test_acc (int): Accuracy of model after testing.
-        - title (string): Title of model based on description.
+        - test_loader (torch.utils.data type): Combines the test dataset and sampler, and provides an iterable over the given dataset
+        - test_acc (int): Accuracy of model after testing
+        - title (string): Title of model based on description
+        - save_path (string): File path to save plot
+        - show_plot (boolean): If True, shows the plot
 
         Returns:
-        - Nothing
+        - fig (matplotlib.figure.Figure): Figure object for summary plot
         '''
 
         inputs, labels = next(iter(test_loader))
@@ -659,13 +662,15 @@ class Net(nn.Module):
 
     def plot_params(self, title=None, save_path=None, show_plot=False):
         '''
-        Plot initial and final weights and biases for all layers.
+        Plot initial and final weights and biases for all layers
 
         Args:
-        - title (string): Title of model based on description.
+        - title (string): Title of model based on description
+        - save_path (string): File path to save plot
+        - show_plot (boolean): If True, shows the plot
 
         Returns:
-        - Nothing
+        - fig (matplotlib.figure.Figure): Figure object for parameters plot
         '''
 
         num_layers = len(self.layers)
@@ -737,23 +742,24 @@ def sample_grid(M=500, x_max=2.0):
 
 def generate_data(K=4, sigma=0.16, N=1000, seed=None, gen=None, display=True):
     '''
-    Generate spiral dataset for training and testing a neural network.
+    Generate spiral dataset for training and testing a neural network
 
     Args:
-    - K (int): Number of classes in the dataset. Default is 4.
-    - sigma (float): Standard deviation of the spiral dataset. Default is 0.16.
-    - N (int): Number of samples in the dataset. Default is 1000.
-    - seed (int): Seed value for reproducibility. Default is None.
+    - K (int): Number of classes in the dataset. Default is 4
+    - sigma (float): Standard deviation of the spiral dataset. Default is 0.16
+    - N (int): Number of samples in the dataset. Default is 1000
+    - seed (int): Seed value for reproducibility. Default is None
     - gen (torch.Generator): Generator object for random number generation. Default is None.
     - display (bool): Whether to display a scatter plot of the dataset. Default is True.
 
     Returns:
-    - X_test (torch.Tensor): Test input data.
-    - y_test (torch.Tensor): Test target data.
-    - X_train (torch.Tensor): Train input data.
-    - y_train (torch.Tensor): Train target data.
-    - test_loader (torch.utils.data.DataLoader): DataLoader for test data.
-    - train_loader (torch.utils.data.DataLoader): DataLoader for train data.
+    - X_test (torch.Tensor): Test input data
+    - y_test (torch.Tensor): Test target data
+    - X_train (torch.Tensor): Train input data
+    - y_train (torch.Tensor): Train target data
+    - test_loader (torch.utils.data.DataLoader): DataLoader for test data
+    - train_loader (torch.utils.data.DataLoader): DataLoader for train data
+    - fig (matplotlib.figure.Figure): Figure object for train and test data plot
     '''
 
     # Set seed for reproducibility
