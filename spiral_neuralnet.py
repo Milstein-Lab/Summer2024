@@ -856,9 +856,7 @@ def main(description, plot, interactive, export, export_file_path, seed, debug, 
                'dend_EI_contrast_learned_bias': 0.11,
                'dend_EI_contrast_zero_bias': 0.01,
                'dend_EI_contrast_fixed_bias': 0.031}
-
-
-
+    
     criterion = "MSELoss"
     num_epochs = 2
     local_torch_random.manual_seed(data_order_seed)
