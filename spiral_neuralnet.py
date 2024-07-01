@@ -279,7 +279,7 @@ class Net(nn.Module):
         Function to gauge network performance
     
         Args:
-        - data_loader (torch.utils.data type): Combines the test dataset and sampler, and provides an iterable over the given dataset.
+        - data_loader (torch.utils.data type): Combines the test dataset and sampler, and provides an iterable over the given dataset
         - device (string): CUDA/GPU if available, CPU otherwise
     
         Returns:
@@ -303,21 +303,21 @@ class Net(nn.Module):
     
     def train_model(self, description, lr, criterion, train_loader, debug=False, num_train_steps=None, num_epochs=1, verbose=False, device='cpu'):
         """
-        Train model with backprop, accumulate loss, evaluate performance.
+        Train model with backprop, accumulate loss, evaluate performance
     
         Args:
+        - description (string): Description of model to train
         - lr (float): Learning rate
         - criterion (torch.nn type): Loss function
-        - optimizer (torch.optim type): Implements Adam or MSELoss algorithm.
-        - train_loader (torch.utils.data type): Combines the train dataset and sampler, and provides an iterable over the given dataset.
+        - train_loader (torch.utils.data type): Combines the train dataset and sampler, and provides an iterable over the given dataset
         - debug (boolean): If True, enters debug mode.
-        - num_train_steps (int): Stops train loop after specified number of steps.
+        - num_train_steps (int): Stops train loop after specified number of steps
         - num_epochs (int): Number of epochs [default: 1]
         - verbose (boolean): If True, print statistics
         - device (string): CUDA/GPU if available, CPU otherwise
     
         Returns:
-        - Nothing
+        - train_acc (int): Accuracy of model on train data
         """
         self.to(device)
         self.train()
@@ -548,6 +548,7 @@ class Net(nn.Module):
         - Dendritic Excitatory-Inhibitory (EI) Contrast
 
         Args:
+        - description (string): Description of model to train
         - targets (torch tensor): Target activities for output neurons
         - lr (float): Learning rate
 
@@ -570,12 +571,12 @@ class Net(nn.Module):
         Evaluate performance
 
         Args:
-        - test_loader (torch.utils.data type): Combines the test dataset and sampler, and provides an iterable over the given dataset.
+        - test_loader (torch.utils.data type): Combines the test dataset and sampler, and provides an iterable over the given dataset
         - verbose (boolean): If True, print statistics
         - device (string): CUDA/GPU if available, CPU otherwise
 
         Returns:
-        - Nothing
+        - test_acc (int): Accuracy of model on test data
         '''
         self.to(device)
         test_total, test_acc = self.test(test_loader, device)
@@ -598,7 +599,7 @@ class Net(nn.Module):
         - eps (float): Decision threshold
     
         Returns:
-        - Nothing
+        - decision_map.T (torch.Tensor): Decision map transpose to use in graph
         """
         X_all = sample_grid()
         y_pred = self.forward(X_all.to(DEVICE), store=False).cpu()
@@ -613,17 +614,19 @@ class Net(nn.Module):
 
         return decision_map.T
 
-    def display_summary(self, test_loader, test_acc, title=None, save_path=None):
+    def display_summary(self, test_loader, test_acc, title=None, save_path=None, show_plot=False):
         '''
         Display network summary
 
         Args:
-        - test_loader (torch.utils.data type): Combines the test dataset and sampler, and provides an iterable over the given dataset.
-        - test_acc (int): Accuracy of model after testing.
-        - title (string): Title of model based on description.
+        - test_loader (torch.utils.data type): Combines the test dataset and sampler, and provides an iterable over the given dataset
+        - test_acc (int): Accuracy of model after testing
+        - title (string): Title of model based on description
+        - save_path (string): File path to save plot
+        - show_plot (boolean): If True, shows the plot
 
         Returns:
-        - Nothing
+        - fig (matplotlib.figure.Figure): Figure object for summary plot
         '''
 
         inputs, labels = next(iter(test_loader))
@@ -688,19 +691,23 @@ class Net(nn.Module):
         fig.tight_layout()
 
         if save_path is not None:
-            fig.savefig(f'{save_path}/summary.png', bbox_inches='tight')
-        else:
-            fig.show()
+            fig.savefig(f'{save_path}/summary_{self.description}.png', bbox_inches='tight')
+        if show_plot:
+            plt.show()
 
-    def plot_params(self, title=None, save_path=None):
+        return fig
+
+    def plot_params(self, title=None, save_path=None, show_plot=False):
         '''
-        Plot initial and final weights and biases for all layers.
+        Plot initial and final weights and biases for all layers
 
         Args:
-        - title (string): Title of model based on description.
+        - title (string): Title of model based on description
+        - save_path (string): File path to save plot
+        - show_plot (boolean): If True, shows the plot
 
         Returns:
-        - Nothing
+        - fig (matplotlib.figure.Figure): Figure object for parameters plot
         '''
 
         num_layers = max(2, len(self.layers))
@@ -743,9 +750,11 @@ class Net(nn.Module):
         fig.tight_layout()
 
         if save_path is not None:
-            fig.savefig(f'{save_path}/parameters.png', bbox_inches='tight')
-        else:
-            fig.show()
+            fig.savefig(f'{save_path}/parameters_{self.description}.png', bbox_inches='tight')
+        if show_plot:
+            plt.show()
+    
+        return fig
 
 
 def sample_grid(M=500, x_max=2.0):
@@ -770,23 +779,24 @@ def sample_grid(M=500, x_max=2.0):
 
 def generate_data(K=4, sigma=0.16, N=1000, seed=None, gen=None, display=True):
     '''
-    Generate spiral dataset for training and testing a neural network.
+    Generate spiral dataset for training and testing a neural network
 
     Args:
-    - K (int): Number of classes in the dataset. Default is 4.
-    - sigma (float): Standard deviation of the spiral dataset. Default is 0.16.
-    - N (int): Number of samples in the dataset. Default is 1000.
-    - seed (int): Seed value for reproducibility. Default is None.
+    - K (int): Number of classes in the dataset. Default is 4
+    - sigma (float): Standard deviation of the spiral dataset. Default is 0.16
+    - N (int): Number of samples in the dataset. Default is 1000
+    - seed (int): Seed value for reproducibility. Default is None
     - gen (torch.Generator): Generator object for random number generation. Default is None.
     - display (bool): Whether to display a scatter plot of the dataset. Default is True.
 
     Returns:
-    - X_test (torch.Tensor): Test input data.
-    - y_test (torch.Tensor): Test target data.
-    - X_train (torch.Tensor): Train input data.
-    - y_train (torch.Tensor): Train target data.
-    - test_loader (torch.utils.data.DataLoader): DataLoader for test data.
-    - train_loader (torch.utils.data.DataLoader): DataLoader for train data.
+    - X_test (torch.Tensor): Test input data
+    - y_test (torch.Tensor): Test target data
+    - X_train (torch.Tensor): Train input data
+    - y_train (torch.Tensor): Train target data
+    - test_loader (torch.utils.data.DataLoader): DataLoader for test data
+    - train_loader (torch.utils.data.DataLoader): DataLoader for train data
+    - fig (matplotlib.figure.Figure): Figure object for train and test data plot
     '''
 
     # Set seed for reproducibility
@@ -798,7 +808,7 @@ def generate_data(K=4, sigma=0.16, N=1000, seed=None, gen=None, display=True):
     
     num_samples = X.shape[0]
     # Shuffle data
-    shuffled_indices = torch.randperm(num_samples)   # Get indices to shuffle data, could use torch.randperm
+    shuffled_indices = torch.randperm(num_samples)   # Get indices to shuffle data
     X = X[shuffled_indices]
     y = y[shuffled_indices]
 
@@ -809,6 +819,7 @@ def generate_data(K=4, sigma=0.16, N=1000, seed=None, gen=None, display=True):
     X_train = X[test_size:]
     y_train = y[test_size:]
 
+    fig = None
     if display:
         fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(8, 4))
         axes[0].scatter(X[:, 0], X[:, 1], c = y, s=10)
@@ -822,7 +833,6 @@ def generate_data(K=4, sigma=0.16, N=1000, seed=None, gen=None, display=True):
         axes[1].set_title('Test Data')
 
         fig.tight_layout()
-        fig.show()
 
     # Train and test DataLoaders
     if gen is None:
@@ -835,19 +845,20 @@ def generate_data(K=4, sigma=0.16, N=1000, seed=None, gen=None, display=True):
     train_loader = DataLoader(train_data, batch_size=batch_size, drop_last=True, shuffle=True, num_workers=0,
                             worker_init_fn=seed_worker, generator=gen)
     
-    return X_test, y_test, X_train, y_train, test_loader, train_loader
+    return X_test, y_test, X_train, y_train, test_loader, train_loader, fig
 
 
 @click.command()
 @click.option('--description', required=True, type=str, default='backprop_learned_bias')
-@click.option('--plot', is_flag=True)
+@click.option('--show_plot', is_flag=True) 
+@click.option('--save_plot', is_flag=True)
 @click.option('--interactive', is_flag=True)
 @click.option('--export', is_flag=True)
 @click.option('--export_file_path', type=click.Path(file_okay=True), default='data/spiralNet_exported_model_data.pkl')
 @click.option('--seed', type=int, default=2021)
 @click.option('--debug', is_flag=True)
 @click.option('--num_train_steps', type=int, default=1)
-def main(description, plot, interactive, export, export_file_path, seed, debug, num_train_steps):
+def main(description, show_plot, save_plot, interactive, export, export_file_path, seed, debug, num_train_steps):
     data_split_seed = seed
     network_seed = seed + 1
     data_order_seed = seed + 2
@@ -855,7 +866,13 @@ def main(description, plot, interactive, export, export_file_path, seed, debug, 
     local_torch_random = torch.Generator()
 
     num_classes = 4
-    X_test, y_test, X_train, y_train, test_loader, train_loader = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=False)
+    if save_plot:
+        save_path = "figures"
+        os.makedirs(save_path, exist_ok=True)
+    else:
+        save_path = None
+
+    X_test, y_test, X_train, y_train, test_loader, train_loader, data_fig = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=show_plot or save_plot)
 
     def train_and_handle_debug(net, description, lr, criterion, train_loader, debug, num_train_steps, num_epochs, device):
         try:
@@ -893,7 +910,7 @@ def main(description, plot, interactive, export, export_file_path, seed, debug, 
                'dend_EI_contrast_learned_bias': 0.11,
                'dend_EI_contrast_zero_bias': 0.01,
                'dend_EI_contrast_fixed_bias': 0.031}
-    
+
     criterion = "MSELoss"
     num_epochs = 2
     local_torch_random.manual_seed(data_order_seed)
@@ -921,9 +938,20 @@ def main(description, plot, interactive, export, export_file_path, seed, debug, 
         train_acc = net.train_model(description, lr_dict[description], criterion, train_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=DEVICE)
         test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
 
-        if plot:
-            net.display_summary(test_loader, test_acc,  title=label_dict[description], save_path="figures")
-            net.plot_params(title=label_dict[description], save_path="figures")
+        plot_title = label_dict[description]
+        summary_fig = net.display_summary(test_loader, test_acc, title=plot_title, save_path=None, show_plot=False)
+        params_fig = net.plot_params(title=plot_title, save_path=None, show_plot=False)
+
+        if save_plot:
+            data_fig.savefig(f'{save_path}/data.png', bbox_inches='tight')
+            summary_fig.savefig(f'{save_path}/summary_{description}.png', bbox_inches='tight')
+            params_fig.savefig(f'{save_path}/params_{description}.png', bbox_inches='tight')
+
+        if show_plot:
+            plt.figure(data_fig.number)
+            plt.figure(summary_fig.number)
+            plt.figure(params_fig.number)
+            plt.show() 
 
     if export:
         if os.path.isfile(export_file_path):
