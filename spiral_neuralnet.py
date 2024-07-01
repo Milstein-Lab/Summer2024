@@ -60,7 +60,7 @@ def seed_worker(worker_id):
 	"""
 	worker_seed = torch.initial_seed() % 2**32
 	np.random.seed(worker_seed)
-	random.seed(worker_seed)
+	random.seed()
 	
 # set_device() to CPU or GPU
 def set_device(verbose=False):
@@ -818,7 +818,7 @@ def main(description, plot, interactive, export, export_file_path, seed, debug, 
 			   'ojas_dend_fixed_bias': 0.021,
 			   'dend_EI_contrast_learned_bias': 0.11,
 			   'dend_EI_contrast_zero_bias': 0.01,
-			   'dend_EI_contrast_fixed_bias': 0.10}
+			   'dend_EI_contrast_fixed_bias': 0.031}
 
 
 
