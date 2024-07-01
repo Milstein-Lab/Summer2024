@@ -651,9 +651,8 @@ class Net(nn.Module):
         fig.tight_layout()
 
         if save_path is not None:
-            fig.savefig(f'{save_path}/summary.png', bbox_inches='tight')
-        else:
-            fig.show()
+            fig.savefig(f'{save_path}/summary_{self.description}.png', bbox_inches='tight')
+        plt.show()
 
     def plot_params(self, title=None, save_path=None):
         '''
@@ -706,9 +705,8 @@ class Net(nn.Module):
         fig.tight_layout()
 
         if save_path is not None:
-            fig.savefig(f'{save_path}/parameters.png', bbox_inches='tight')
-        else:
-            fig.show()
+            fig.savefig(f'{save_path}/parameters_{self.description}.png', bbox_inches='tight')
+        fig.show()
 
 
 def sample_grid(M=500, x_max=2.0):
@@ -731,7 +729,7 @@ def sample_grid(M=500, x_max=2.0):
     return X_all
 
 
-def generate_data(K=4, sigma=0.16, N=1000, seed=None, gen=None, display=True):
+def generate_data(K=4, sigma=0.16, N=1000, save_path=None, seed=None, gen=None, display=True):
     '''
     Generate spiral dataset for training and testing a neural network.
 
@@ -761,7 +759,7 @@ def generate_data(K=4, sigma=0.16, N=1000, seed=None, gen=None, display=True):
     
     num_samples = X.shape[0]
     # Shuffle data
-    shuffled_indices = torch.randperm(num_samples)   # Get indices to shuffle data, could use torch.randperm
+    shuffled_indices = torch.randperm(num_samples)   # Get indices to shuffle data
     X = X[shuffled_indices]
     y = y[shuffled_indices]
 
@@ -785,6 +783,9 @@ def generate_data(K=4, sigma=0.16, N=1000, seed=None, gen=None, display=True):
         axes[1].set_title('Test Data')
 
         fig.tight_layout()
+
+        if save_path is not None:
+            fig.savefig(f'{save_path}/data.png', bbox_inches='tight')
         fig.show()
 
     # Train and test DataLoaders
@@ -803,14 +804,15 @@ def generate_data(K=4, sigma=0.16, N=1000, seed=None, gen=None, display=True):
 
 @click.command()
 @click.option('--description', required=True, type=str, default='backprop_learned_bias')
-@click.option('--plot', is_flag=True)
+@click.option('--show_plot', is_flag=True) 
+@click.option('--save_plot', is_flag=True)
 @click.option('--interactive', is_flag=True)
 @click.option('--export', is_flag=True)
 @click.option('--export_file_path', type=click.Path(file_okay=True), default='data/spiralNet_exported_model_data.pkl')
 @click.option('--seed', type=int, default=2021)
 @click.option('--debug', is_flag=True)
 @click.option('--num_train_steps', type=int, default=1)
-def main(description, plot, interactive, export, export_file_path, seed, debug, num_train_steps):
+def main(description, show_plot, save_plot, interactive, export, export_file_path, seed, debug, num_train_steps):
     data_split_seed = seed
     network_seed = seed + 1
     data_order_seed = seed + 2
@@ -818,7 +820,13 @@ def main(description, plot, interactive, export, export_file_path, seed, debug, 
     local_torch_random = torch.Generator()
 
     num_classes = 4
-    X_test, y_test, X_train, y_train, test_loader, train_loader = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=False)
+    if save_plot:
+        save_path = "figures"
+        os.makedirs(save_path, exist_ok=True)
+    else:
+        save_path = None
+
+    X_test, y_test, X_train, y_train, test_loader, train_loader = generate_data(K=num_classes, save_path=save_path, seed=data_split_seed, gen=local_torch_random, display=show_plot)
 
     def train_and_handle_debug(net, description, lr, criterion, train_loader, debug, num_train_steps, num_epochs, device):
         try:
@@ -857,8 +865,6 @@ def main(description, plot, interactive, export, export_file_path, seed, debug, 
                'dend_EI_contrast_zero_bias': 0.01,
                'dend_EI_contrast_fixed_bias': 0.031}
 
-
-
     criterion = "MSELoss"
     num_epochs = 2
     local_torch_random.manual_seed(data_order_seed)
@@ -877,9 +883,12 @@ def main(description, plot, interactive, export, export_file_path, seed, debug, 
         net.train_model(description, lr_dict[description], criterion, train_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=DEVICE)
         test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
 
-        if plot:
-            net.display_summary(test_loader, test_acc,  title=label_dict[description], save_path="figures")
-            net.plot_params(title=label_dict[description], save_path="figures")
+        if show_plot or save_plot:
+            plot_title = label_dict[description]
+            net.display_summary(test_loader, test_acc, title=plot_title, save_path=save_path)
+            net.plot_params(title=plot_title, save_path=save_path)
+        if show_plot:
+            plt.show()  
 
     if export:
         if os.path.isfile(export_file_path):
