@@ -220,12 +220,13 @@ class Net(nn.Module):
         if 'backprop' in self.description:
             self.optimizer = optim.SGD(self.parameters(), lr=lr)
 
-    def forward(self, x, store=True, testing=True):
+    def forward(self, x, num_samples=100, store=True, testing=True,):
         """
         Simulate forward pass of MLP Network
     
         Args:
         - x (torch.tensor): Input data
+        - num_samples (int): Number of samples
         - store (boolean): If True, store intermediate states and activities of each layer
         - test (boolean): If True, expect full batch to be contained in x
     
@@ -238,7 +239,7 @@ class Net(nn.Module):
         if self.mean_subtract_input:
             if not testing:
                 if self.forward_activity_train_history['Input']:
-                    x = x - torch.mean(torch.stack(self.forward_activity_train_history['Input'][-100:]), dim=0)
+                    x = x - torch.mean(torch.stack(self.forward_activity_train_history['Input'][-num_samples:]), dim=0)
                     self.forward_activity_mean_subtracted['Input'] = x.detach().clone()
                 else:
                     self.forward_activity_mean_subtracted['Input'] = x.detach().clone()
@@ -366,7 +367,7 @@ class Net(nn.Module):
                 self.train_labels.append(labels)
 
                 # forward pass
-                outputs = self.forward(inputs, testing=False)
+                outputs = self.forward(inputs, num_samples=100, testing=False)
                 _, predicted = torch.max(outputs, 1)
                 self.predicted_labels.append(predicted)
 
