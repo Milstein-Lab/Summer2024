@@ -120,7 +120,7 @@ class Net(nn.Module):
     Simulate MLP Network
     """
 
-    def __init__(self, actv, input_feature_num, hidden_unit_nums, output_feature_num, description=None, use_bias=True,
+    def __init__(self, actv, input_feature_num, hidden_unit_nums, output_feature_num, lr, description=None, use_bias=True,
                  learn_bias=True, mean_subtract_input=False):
         """
         Initialize MLP Network parameters
@@ -130,6 +130,7 @@ class Net(nn.Module):
         - input_feature_num (int): Number of input features
         - hidden_unit_nums (list): Number of units per hidden layer. List of integers
         - output_feature_num (int): Number of output features
+        - lr (float): Learning rate
         - description (string): Learning rule to use
         - use_bias (boolean): If True, randomly initialize biases. If False, set all biases to 0.
         - learn_bias (boolean): If True, use learning rule to update biases. If False, otherwise.
@@ -216,6 +217,9 @@ class Net(nn.Module):
 
         self.mlp = nn.Sequential(*layers)
 
+        if 'backprop' in self.description:
+            self.optimizer = optim.SGD(self.parameters(), lr=lr)
+
     def forward(self, x, store=True, testing=True):
         """
         Simulate forward pass of MLP Network
@@ -274,7 +278,7 @@ class Net(nn.Module):
         for key in self.layers.keys():
             self.layers[key].register_full_backward_hook(self.save_gradients(key))
     
-    def test(self, data_loader, device='cpu', testing=True):
+    def test(self, data_loader, device='cpu', store=True, testing=True):
         """
         Function to gauge network performance
     
@@ -322,7 +326,7 @@ class Net(nn.Module):
         self.to(device)
         self.train()
         self.training_losses = []
-        train_step = 1
+        train_step = 0
         self.averaged_accuracy = []
         self.train_steps_list = []
 
@@ -357,10 +361,10 @@ class Net(nn.Module):
                 inputs = inputs.to(device).float()
                 labels = labels.to(device).long()
 
-                if train_step % 100 == 0:
-                    _, acc = self.test(test_loader, device)
-                    self.averaged_accuracy.append(acc)
-                    self.train_steps_list.append(train_step)
+                # if train_step % 100 == 0:
+                #     _, acc = self.test(test_loader, device)
+                #     self.averaged_accuracy.append(acc)
+                #     self.train_steps_list.append(train_step)
 
                 # forward pass
                 outputs = self.forward(inputs, testing=False)
@@ -389,7 +393,7 @@ class Net(nn.Module):
 
                 # Choose learning rule
                 if 'backprop' in description:
-                    self.train_backprop(loss, lr)
+                    self.train_backprop(loss)
                 elif 'dend' in description:
                     self.train_dend(description, targets, lr)
 
@@ -440,11 +444,10 @@ class Net(nn.Module):
 
         return train_acc
     
-    def train_backprop(self, loss, lr):
-        optimizer = optim.SGD(self.parameters(), lr=lr)
-        optimizer.zero_grad()
+    def train_backprop(self, loss):
+        self.optimizer.zero_grad()
         loss.backward()
-        optimizer.step()
+        self.optimizer.step()
 
     def ReLU_derivative(self, x):
         output = torch.ones_like(x)
@@ -838,11 +841,10 @@ def generate_data(K=4, sigma=0.16, N=1000, seed=None, gen=None, display=True):
         gen = torch.Generator()
     batch_size = 1
     test_data = TensorDataset(X_test, y_test)
-    test_loader = DataLoader(test_data, batch_size=len(test_data), shuffle=False, num_workers=0,
-                            worker_init_fn=seed_worker, generator=gen)
+    test_loader = DataLoader(test_data, batch_size=len(test_data), shuffle=False, num_workers=0)
+
     train_data = TensorDataset(X_train, y_train)
-    train_loader = DataLoader(train_data, batch_size=batch_size, drop_last=True, shuffle=True, num_workers=0,
-                            worker_init_fn=seed_worker, generator=gen)
+    train_loader = DataLoader(train_data, batch_size=batch_size, drop_last=True, shuffle=True, num_workers=0, generator=gen)
     
     return X_test, y_test, X_train, y_train, test_loader, train_loader, fig
 
@@ -930,7 +932,7 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
         learn_bias = False
     
     net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=use_bias,
-                  learn_bias=learn_bias, mean_subtract_input=mean_subtract_input).to(DEVICE)
+                  learn_bias=learn_bias, lr=lr_dict[description], mean_subtract_input=mean_subtract_input).to(DEVICE)
     
     if debug:
         net.register_hooks()
