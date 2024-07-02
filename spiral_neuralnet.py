@@ -220,7 +220,7 @@ class Net(nn.Module):
         if 'backprop' in self.description:
             self.optimizer = optim.SGD(self.parameters(), lr=lr)
 
-    def forward(self, x, store=True, test=True):
+    def forward(self, x, store=True, testing=True):
         """
         Simulate forward pass of MLP Network
     
@@ -236,7 +236,7 @@ class Net(nn.Module):
             self.forward_activity['Input'] = x.detach().clone()
         
         if self.mean_subtract_input:
-            if not test:
+            if not testing:
                 if self.forward_activity_train_history['Input']:
                     x = x - torch.mean(torch.stack(self.forward_activity_train_history['Input'][-10:]), dim=0)
                     self.forward_activity_mean_subtracted['Input'] = x.detach().clone()
@@ -257,7 +257,7 @@ class Net(nn.Module):
                 self.forward_activity[key] = x.detach().clone() # After ReLU
             
             if self.mean_subtract_input:
-                if not test:
+                if not testing:
                     if self.forward_activity_train_history[key]:
                         x = x - torch.mean(torch.stack(self.forward_activity_train_history[key][-10:]), dim=0)
                         self.forward_activity_mean_subtracted[key] = x.detach().clone()
@@ -278,7 +278,7 @@ class Net(nn.Module):
         for key in self.layers.keys():
             self.layers[key].register_full_backward_hook(self.save_gradients(key))
     
-    def test(self, data_loader, device='cpu', store=True):
+    def test(self, data_loader, device='cpu', store=True, testing=True):
         """
         Function to gauge network performance
     
@@ -297,7 +297,7 @@ class Net(nn.Module):
             inputs = inputs.to(device).float()
             labels = labels.to(device).long()
 
-            outputs = self.forward(inputs, store=store)
+            outputs = self.forward(inputs, testing, store=store)
             _, predicted = torch.max(outputs, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
@@ -368,7 +368,7 @@ class Net(nn.Module):
                         self.train_steps_list.append(train_step)
 
                 # forward pass
-                outputs = self.forward(inputs, test=False)
+                outputs = self.forward(inputs, testing=False)
 
                 # Store forward state and activity info
                 self.forward_activity_train_history['Input'].append(self.forward_activity['Input'])
@@ -430,7 +430,7 @@ class Net(nn.Module):
         
         self.eval()
 
-        train_total, train_acc = self.test(train_loader, device)
+        train_total, train_acc = self.test(train_loader, device, testing=False)
         self.train_acc = train_acc
 
         # Store final weights and biases
