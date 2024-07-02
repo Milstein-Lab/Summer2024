@@ -926,7 +926,7 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                 'dend_EI_contrast_zero_bias': 'Dendritic EI Contrast Zero Bias',
                 'dend_EI_contrast_fixed_bias': 'Dendritic EI Contrast Fixed Bias'}
     
-    lr_dict = {'backprop_learned_bias': 0.11, # TODO Screen everything again
+    lr_dict = {'backprop_learned_bias': 0.1, # TODO Screen everything again
                'backprop_zero_bias': 0.01,
                'backprop_fixed_bias': 0.08,
                'dend_temp_contrast_learned_bias': 0.13,

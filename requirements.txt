@@ -1,7 +1,9 @@
 click==8.1.7
 ipython==8.12.3
+ipython==8.24.0
 matplotlib==3.8.4
 numpy==1.24.3
+optuna==3.6.1
 torch==2.3.0
 torchvision==0.18.0
 tqdm==4.66.4
