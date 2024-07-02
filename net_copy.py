@@ -121,7 +121,7 @@ class Net(nn.Module):
     """
 
     def __init__(self, actv, input_feature_num, hidden_unit_nums, output_feature_num, description=None, use_bias=True,
-                 learn_bias=True, mean_subtract_input=False):
+                 learn_bias=True):
         """
         Initialize MLP Network parameters
     
@@ -145,12 +145,12 @@ class Net(nn.Module):
         self.description = description
         self.use_bias = use_bias
         self.learn_bias = learn_bias
-        self.mean_subtract_input = mean_subtract_input
+        # self.mean_subtract_input = mean_subtract_input
 
         self.forward_soma_state = {} # states of all layers pre activation
         self.forward_activity = {} # activities of all layers post ReLU
-        if self.mean_subtract_input:
-            self.forward_activity_mean_subtracted = {}
+        # if self.mean_subtract_input:
+        #     self.forward_activity_mean_subtracted = {}
         self.weights = {}
         self.biases = {}
         self.initial_weights = {}
@@ -216,7 +216,7 @@ class Net(nn.Module):
 
         self.mlp = nn.Sequential(*layers)
 
-    def forward(self, x, store=True, test=True):
+    def forward(self, x, store=True):
         """
         Simulate forward pass of MLP Network
     
@@ -231,16 +231,16 @@ class Net(nn.Module):
         if store:
             self.forward_activity['Input'] = x.detach().clone()
         
-        if self.mean_subtract_input:
-            if not test:
-                if self.forward_activity_train_history['Input']:
-                    x = x - torch.mean(torch.stack(self.forward_activity_train_history['Input'][-10:]), dim=0)
-                    self.forward_activity_mean_subtracted['Input'] = x.detach().clone()
-                else:
-                    self.forward_activity_mean_subtracted['Input'] = x.detach().clone()
-            else:
-                x = x - torch.mean(x, dim=0)
-                self.forward_activity_mean_subtracted['Input'] = x.detach().clone()
+        # if self.mean_subtract_input:
+        #     if not test:
+        #         if self.forward_activity_train_history['Input']:
+        #             x = x - torch.mean(torch.stack(self.forward_activity_train_history['Input'][-10:]), dim=0)
+        #             self.forward_activity_mean_subtracted['Input'] = x.detach().clone()
+        #         else:
+        #             self.forward_activity_mean_subtracted['Input'] = x.detach().clone()
+        #     else:
+        #         x = x - torch.mean(x, dim=0)
+        #         self.forward_activity_mean_subtracted['Input'] = x.detach().clone()
         
         for key, layer in self.layers.items():
             x = layer(x)
@@ -252,16 +252,16 @@ class Net(nn.Module):
             if store:
                 self.forward_activity[key] = x.detach().clone() # After ReLU
             
-            if self.mean_subtract_input:
-                if not test:
-                    if self.forward_activity_train_history[key]:
-                        x = x - torch.mean(torch.stack(self.forward_activity_train_history[key][-10:]), dim=0)
-                        self.forward_activity_mean_subtracted[key] = x.detach().clone()
-                    else:
-                        self.forward_activity_mean_subtracted[key] = x.detach().clone()
-                else:
-                    x = x - torch.mean(x, dim=0)
-                    self.forward_activity_mean_subtracted[key] = x.detach().clone()
+            # if self.mean_subtract_input:
+            #     if not test:
+            #         if self.forward_activity_train_history[key]:
+            #             x = x - torch.mean(torch.stack(self.forward_activity_train_history[key][-10:]), dim=0)
+            #             self.forward_activity_mean_subtracted[key] = x.detach().clone()
+            #         else:
+            #             self.forward_activity_mean_subtracted[key] = x.detach().clone()
+            #     else:
+            #         x = x - torch.mean(x, dim=0)
+            #         self.forward_activity_mean_subtracted[key] = x.detach().clone()
         
         return x
 
@@ -329,20 +329,20 @@ class Net(nn.Module):
         # Create dictionaries for train state and activities
         self.forward_soma_state_train_history = {}
         self.forward_activity_train_history = {}
-        if self.mean_subtract_input:
-            self.forward_activity_mean_subtracted_train_history = {}
+        # if self.mean_subtract_input:
+        #     self.forward_activity_mean_subtracted_train_history = {}
         self.forward_dend_state_train_history = {}
         self.backward_dend_state_train_history = {}
         self.nudges_train_history = {}
         self.weights_train_history = {}
         self.forward_activity_train_history['Input'] = []
-        if self.mean_subtract_input:
-            self.forward_activity_mean_subtracted_train_history['Input'] = []
+        # if self.mean_subtract_input:
+        #     self.forward_activity_mean_subtracted_train_history['Input'] = []
         for key, layer in self.layers.items():
             self.forward_soma_state_train_history[key] = []
             self.forward_activity_train_history[key] = []
-            if self.mean_subtract_input:
-                self.forward_activity_mean_subtracted_train_history[key] = []
+            # if self.mean_subtract_input:
+            #     self.forward_activity_mean_subtracted_train_history[key] = []
             self.forward_dend_state_train_history[key] = []
             self.backward_dend_state_train_history[key] = []
             self.nudges_train_history[key] = []
@@ -363,16 +363,16 @@ class Net(nn.Module):
                     self.train_steps_list.append(train_step)
 
                 # forward pass
-                outputs = self.forward(inputs, test=False)
+                outputs = self.forward(inputs)
 
                 # Store forward state and activity info
                 self.forward_activity_train_history['Input'].append(self.forward_activity['Input'])
                 for key, layer in self.layers.items():
                     self.forward_soma_state_train_history[key].append(self.forward_soma_state[key])
                     self.forward_activity_train_history[key].append(self.forward_activity[key])
-                    if self.mean_subtract_input:
-                        self.forward_activity_mean_subtracted_train_history[key].append(
-                            self.forward_activity_mean_subtracted[key])
+                    # if self.mean_subtract_input:
+                    #     self.forward_activity_mean_subtracted_train_history[key].append(
+                    #         self.forward_activity_mean_subtracted[key])
 
                 # Decide criterion function
                 criterion_function = eval(f"nn.{criterion}()")
@@ -410,8 +410,8 @@ class Net(nn.Module):
         for key, layer in self.layers.items():
             self.forward_soma_state_train_history[key] = torch.stack(self.forward_soma_state_train_history[key]).squeeze()
             self.forward_activity_train_history[key] = torch.stack(self.forward_activity_train_history[key]).squeeze()
-            if self.mean_subtract_input:
-                self.forward_activity_mean_subtracted_train_history[key] = torch.stack(self.forward_activity_mean_subtracted_train_history[key]).squeeze()
+            # if self.mean_subtract_input:
+            #     self.forward_activity_mean_subtracted_train_history[key] = torch.stack(self.forward_activity_mean_subtracted_train_history[key]).squeeze()
             if self.forward_dend_state_train_history[key]:
                 self.forward_dend_state_train_history[key] = torch.stack(self.forward_dend_state_train_history[key]).squeeze()
             if self.backward_dend_state_train_history[key]:
@@ -505,14 +505,14 @@ class Net(nn.Module):
                     self.biases[layer].data += lr * self.nudges[layer].squeeze()
                 prev_layer = layer
     
-    def step_ojas(self, lr):
-        with torch.no_grad():
-            prev_layer = 'Input'
-            for layer in self.layers.keys():
-                self.weights[layer].data += (lr * self.backward_activity[layer].T * (self.forward_activity_mean_subtracted[prev_layer] - self.backward_activity[layer].T * self.weights[layer].data))
-                if self.use_bias and self.learn_bias:
-                    self.biases[layer].data += lr * self.nudges[layer].squeeze()
-                prev_layer = layer
+    # def step_ojas(self, lr):
+    #     with torch.no_grad():
+    #         prev_layer = 'Input'
+    #         for layer in self.layers.keys():
+    #             self.weights[layer].data += (lr * self.backward_activity[layer].T * (self.forward_activity_mean_subtracted[prev_layer] - self.backward_activity[layer].T * self.weights[layer].data))
+    #             if self.use_bias and self.learn_bias:
+    #                 self.biases[layer].data += lr * self.nudges[layer].squeeze()
+    #             prev_layer = layer
     
     def backward_dend_EI_contrast(self, targets):
         reverse_layers = list(self.layers.keys())[::-1]
@@ -560,7 +560,7 @@ class Net(nn.Module):
             self.step_dend_temp_contrast(lr)
         elif 'oja' in description:
             self.backward_ojas(targets)
-            self.step_ojas(lr)
+            # self.step_ojas(lr)
         elif 'dend_EI_contrast' in description:
             self.backward_dend_EI_contrast(targets)
             self.step_dend_EI_contrast(lr)
@@ -915,10 +915,10 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
     criterion = "MSELoss"
     num_epochs = 2
     local_torch_random.manual_seed(data_order_seed)
-    if "ojas_dend" in description:
-        mean_subtract_input = True
-    else:
-        mean_subtract_input = False
+    # if "ojas_dend" in description:
+    #     mean_subtract_input = True
+    # else:
+    #     mean_subtract_input = False
     if "learned_bias" in description:
         use_bias = True
         learn_bias = True
@@ -930,7 +930,7 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
         learn_bias = False
     
     net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=use_bias,
-                  learn_bias=learn_bias, mean_subtract_input=mean_subtract_input).to(DEVICE)
+                  learn_bias=learn_bias).to(DEVICE)
     
     if debug:
         net.register_hooks()
