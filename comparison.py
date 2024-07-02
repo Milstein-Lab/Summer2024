@@ -20,7 +20,7 @@ def main():
     pkl_files = [f for f in os.listdir(pkl_directory) if f.endswith('.pkl')]
 
     num_classes = 4
-    X_test, y_test, X_train, y_train, test_loader, train_loader, _ = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=False)
+    X_test, y_test, X_train, y_train, X_val, y_val, test_loader, train_loader, val_loader, _ = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=False)
 
     label_dict = {'backprop_learned_bias': 'Backprop Learned Bias',
                 'backprop_zero_bias': 'Backprop Zero Bias',

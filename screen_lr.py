@@ -33,7 +33,7 @@ def main(description, seed, export, export_file_path):
                 'dend_EI_contrast_fixed_bias': 'Dendritic EI Contrast Fixed Bias'}
 
     num_classes = 4
-    X_test, y_test, X_train, y_train, test_loader, train_loader, data_fig = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=False)
+    X_test, y_test, X_train, y_train, X_val, y_val, test_loader, train_loader, val_loader, data_fig = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=False)
 
     accuracy_history = []
     start = 0.20

@@ -12,7 +12,7 @@ def main(description):
     local_torch_random = torch.Generator()
 
     num_classes = 4
-    X_test, y_test, X_train, y_train, test_loader, train_loader, data_fig = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=True)
+    X_test, y_test, X_train, y_train, X_val, y_val, test_loader, train_loader, val_loader, data_fig = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=True)
 
     # Train and Test model
     set_seed(network_seed)

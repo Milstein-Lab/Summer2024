@@ -305,7 +305,7 @@ class Net(nn.Module):
         acc = 100 * correct / total
         return total, acc
     
-    def train_model(self, description, lr, criterion, train_loader, test_loader, debug=False, num_train_steps=None, num_epochs=1, verbose=False, device='cpu'):
+    def train_model(self, description, lr, criterion, train_loader, val_loader, debug=False, num_train_steps=None, num_epochs=1, verbose=False, device='cpu'):
         """
         Train model with backprop, accumulate loss, evaluate performance
     
@@ -314,6 +314,7 @@ class Net(nn.Module):
         - lr (float): Learning rate
         - criterion (torch.nn type): Loss function
         - train_loader (torch.utils.data type): Combines the train dataset and sampler, and provides an iterable over the given dataset
+        - val_loader (torch.utils.data type): Contains a validation dataset as a single batch
         - debug (boolean): If True, enters debug mode.
         - num_train_steps (int): Stops train loop after specified number of steps
         - num_epochs (int): Number of epochs [default: 1]
@@ -327,7 +328,7 @@ class Net(nn.Module):
         self.train()
         self.training_losses = []
         train_step = 0
-        self.averaged_accuracy = []
+        self.train_accuracy = []
         self.train_steps_list = []
 
         # Create dictionaries for train state and activities
@@ -353,6 +354,7 @@ class Net(nn.Module):
             self.weights_train_history[key] = []
 
         self.train_labels = []
+        self.predicted_labels = []
 
         for epoch in tqdm(range(num_epochs)):  # Loop over the dataset multiple times
             for i, data in enumerate(train_loader, 0):
@@ -361,13 +363,18 @@ class Net(nn.Module):
                 inputs = inputs.to(device).float()
                 labels = labels.to(device).long()
 
-                # if train_step % 100 == 0:
-                #     _, acc = self.test(test_loader, device)
-                #     self.averaged_accuracy.append(acc)
-                #     self.train_steps_list.append(train_step)
+                self.train_labels.append(labels)
 
                 # forward pass
                 outputs = self.forward(inputs, testing=False)
+                _, predicted = torch.max(outputs, 1)
+                self.predicted_labels.append(predicted)
+
+                if train_step % 100 == 0:
+                    correct = (torch.tensor(self.predicted_labels[-100:]) == torch.tensor(self.train_labels[-100:])).sum().item()
+                    acc = correct
+                    self.train_accuracy.append(acc)
+                    self.train_steps_list.append(train_step)
 
                 # Store forward state and activity info
                 self.forward_activity_train_history['Input'].append(self.forward_activity['Input'])
@@ -389,8 +396,6 @@ class Net(nn.Module):
                 elif criterion == "CrossEntropyLoss":
                     loss = criterion_function(outputs, labels)
                     
-                self.train_labels.append(labels)
-
                 # Choose learning rule
                 if 'backprop' in description:
                     self.train_backprop(loss)
@@ -429,8 +434,8 @@ class Net(nn.Module):
         
         self.eval()
 
-        train_total, train_acc = self.test(train_loader, device, testing=False)
-        self.train_acc = train_acc
+        val_total, val_acc = self.test(val_loader, device, testing=True)
+        self.val_acc = val_acc
 
         # Store final weights and biases
         self.final_weights = {}
@@ -440,9 +445,9 @@ class Net(nn.Module):
             self.final_biases[key] = self.biases[key].data.clone()
 
         if verbose:
-            print(f'\nAccuracy on the {train_total} training samples: {train_acc:0.2f}')
+            print(f'\nAccuracy on the {val_total} training samples: {val_acc:0.2f}')
 
-        return train_acc
+        return val_acc
     
     def train_backprop(self, loss):
         self.optimizer.zero_grad()
@@ -670,7 +675,7 @@ class Net(nn.Module):
             axes[0][i].set_xticks(range(this_class_averaged_activity.shape[0]))
             axes[0][i].set_xticklabels(range(this_class_averaged_activity.shape[0]))
 
-        axes[1][0].plot(self.train_steps_list, self.averaged_accuracy, label=f"Test Accuracy: {test_acc}")
+        axes[1][0].plot(self.train_steps_list, self.train_accuracy, label=f"Test Accuracy: {test_acc:.3f}\nVal Accuracy: {self.val_acc:.3f}")
         axes[1][0].set_xlabel('Train Steps')
         axes[1][0].set_ylabel('Accuracy (%)')
         axes[1][0].legend(loc='best', frameon=False)
@@ -779,14 +784,14 @@ def sample_grid(M=500, x_max=2.0):
     return X_all
 
 
-def generate_data(K=4, sigma=0.16, N=1000, seed=None, gen=None, display=True):
+def generate_data(K=4, sigma=0.16, N=2000, seed=None, gen=None, display=True):
     '''
-    Generate spiral dataset for training and testing a neural network
+    Generate spiral dataset for training, testing, and validating a neural network
 
     Args:
     - K (int): Number of classes in the dataset. Default is 4
     - sigma (float): Standard deviation of the spiral dataset. Default is 0.16
-    - N (int): Number of samples in the dataset. Default is 1000
+    - N (int): Number of samples in the dataset. Default is 2000
     - seed (int): Seed value for reproducibility. Default is None
     - gen (torch.Generator): Generator object for random number generation. Default is None.
     - display (bool): Whether to display a scatter plot of the dataset. Default is True.
@@ -796,8 +801,11 @@ def generate_data(K=4, sigma=0.16, N=1000, seed=None, gen=None, display=True):
     - y_test (torch.Tensor): Test target data
     - X_train (torch.Tensor): Train input data
     - y_train (torch.Tensor): Train target data
+    - X_val (torch.Tensor): Validation input data
+    - y_val (torch.tensor): Validation target data
     - test_loader (torch.utils.data.DataLoader): DataLoader for test data
     - train_loader (torch.utils.data.DataLoader): DataLoader for train data
+    - val_loader (torch.utils.data.DataLoader): Dataloader for validation data
     - fig (matplotlib.figure.Figure): Figure object for train and test data plot
     '''
 
@@ -815,15 +823,23 @@ def generate_data(K=4, sigma=0.16, N=1000, seed=None, gen=None, display=True):
     y = y[shuffled_indices]
 
     # Split data into train/test
-    test_size = int(0.2 * num_samples)    # Assign test datset size using 20% of samples
-    X_test = X[:test_size]
-    y_test = y[:test_size]
-    X_train = X[test_size:]
-    y_train = y[test_size:]
+    test_size = int(0.15 * num_samples)
+    val_size = int(0.15 * num_samples)
+    train_size = num_samples - (test_size + val_size)
+
+    test_end_idx = test_size
+    val_end_idx = test_size + val_size
+
+    X_test = X[:test_end_idx]
+    y_test = y[:test_end_idx]
+    X_val = X[test_end_idx:val_end_idx]
+    y_val = y[test_end_idx:val_end_idx]
+    X_train = X[val_end_idx:]
+    y_train = y[val_end_idx:]
 
     fig = None
     if display:
-        fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(8, 4))
+        fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(12, 4))
         axes[0].scatter(X[:, 0], X[:, 1], c = y, s=10)
         axes[0].set_xlabel('x1')
         axes[0].set_ylabel('x2')
@@ -834,6 +850,11 @@ def generate_data(K=4, sigma=0.16, N=1000, seed=None, gen=None, display=True):
         axes[1].set_ylabel('x2')
         axes[1].set_title('Test Data')
 
+        axes[2].scatter(X_val[:, 0], X_val[:, 1], c=y_val, s=10)
+        axes[2].set_xlabel('x1')
+        axes[2].set_ylabel('x2')
+        axes[2].set_title('Validation Data')
+
         fig.tight_layout()
 
     # Train and test DataLoaders
@@ -843,10 +864,13 @@ def generate_data(K=4, sigma=0.16, N=1000, seed=None, gen=None, display=True):
     test_data = TensorDataset(X_test, y_test)
     test_loader = DataLoader(test_data, batch_size=len(test_data), shuffle=False, num_workers=0)
 
+    val_data = TensorDataset(X_val, y_val)
+    val_loader = DataLoader(val_data, batch_size=len(val_data), shuffle=False, num_workers=0)
+
     train_data = TensorDataset(X_train, y_train)
     train_loader = DataLoader(train_data, batch_size=batch_size, drop_last=True, shuffle=True, num_workers=0, generator=gen)
     
-    return X_test, y_test, X_train, y_train, test_loader, train_loader, fig
+    return X_test, y_test, X_train, y_train, X_val, y_val, test_loader, train_loader, val_loader, fig
 
 
 @click.command()
@@ -860,7 +884,7 @@ def generate_data(K=4, sigma=0.16, N=1000, seed=None, gen=None, display=True):
 @click.option('--debug', is_flag=True)
 @click.option('--num_train_steps', type=int, default=1)
 def main(description, show_plot, save_plot, interactive, export, export_file_path, seed, debug, num_train_steps):
-    data_split_seed = seed
+    data_split_seed = 0
     network_seed = seed + 1
     data_order_seed = seed + 2
     DEVICE = set_device()
@@ -875,11 +899,11 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
     else:
         save_path = None
 
-    X_test, y_test, X_train, y_train, test_loader, train_loader, data_fig = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=show_plot or save_plot)
+    X_test, y_test, X_train, y_train, X_val, y_val, test_loader, train_loader, val_loader, data_fig = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=show_plot or save_plot)
 
     def train_and_handle_debug(net, description, lr, criterion, train_loader, test_loader, debug, num_train_steps, num_epochs, device):
         try:
-            net.train_model(description, lr, criterion, train_loader, test_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=device)
+            net.train_model(description, lr, criterion, train_loader, val_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=device)
         except AssertionError:
             print(f"{num_train_steps} train steps completed.")
         except Exception as e:
@@ -901,7 +925,7 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                 'dend_EI_contrast_zero_bias': 'Dendritic EI Contrast Zero Bias',
                 'dend_EI_contrast_fixed_bias': 'Dendritic EI Contrast Fixed Bias'}
     
-    lr_dict = {'backprop_learned_bias': 0.11,
+    lr_dict = {'backprop_learned_bias': 0.11, # TODO Screen everything again
                'backprop_zero_bias': 0.01,
                'backprop_fixed_bias': 0.08,
                'dend_temp_contrast_learned_bias': 0.13,
@@ -915,7 +939,7 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                'dend_EI_contrast_fixed_bias': 0.031}
 
     criterion = "MSELoss"
-    num_epochs = 2
+    num_epochs = 1
     local_torch_random.manual_seed(data_order_seed)
     if "ojas_dend" in description:
         mean_subtract_input = True
@@ -936,9 +960,9 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
     
     if debug:
         net.register_hooks()
-        train_and_handle_debug(net, description, lr_dict[description], criterion, train_loader, test_loader, debug, num_train_steps, num_epochs, DEVICE)
+        train_and_handle_debug(net, description, lr_dict[description], criterion, train_loader, val_loader, debug, num_train_steps, num_epochs, DEVICE)
     else:
-        train_acc = net.train_model(description, lr_dict[description], criterion, train_loader, test_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=DEVICE)
+        val_acc = net.train_model(description, lr_dict[description], criterion, train_loader, val_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=DEVICE)
         test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
 
         plot_title = label_dict[description]
