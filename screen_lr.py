@@ -36,9 +36,9 @@ def main(description, seed, export, export_file_path):
     X_test, y_test, X_train, y_train, test_loader, train_loader, data_fig = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=False)
 
     accuracy_history = []
-    start = 0.01
-    end = 0.20
-    step = 0.01
+    start = 0.20
+    end = 0.40
+    step = 0.02
     learning_rates = np.arange(start, end + step, step)
     criterion = "MSELoss"
     num_epochs = 2
@@ -63,7 +63,7 @@ def main(description, seed, export, export_file_path):
         net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=use_bias,
                   learn_bias=learn_bias, mean_subtract_input=mean_subtract_input).to(DEVICE)
 
-        acc = net.train_model(description, i, criterion, train_loader, debug=False, num_epochs=num_epochs, verbose=True, device=DEVICE)
+        acc = net.train_model(description, i, criterion, train_loader, test_loader, debug=False, num_epochs=num_epochs, verbose=True, device=DEVICE)
 
         accuracy_history.append(acc)
         print(f'Learning Rate: {i}\n')

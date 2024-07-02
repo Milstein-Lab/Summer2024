@@ -234,7 +234,7 @@ class Net(nn.Module):
         if self.mean_subtract_input:
             if not testing:
                 if self.forward_activity_train_history['Input']:
-                    x = x - torch.mean(torch.stack(self.forward_activity_train_history['Input'][-10:]), dim=0)
+                    x = x - torch.mean(torch.stack(self.forward_activity_train_history['Input'][-100:]), dim=0)
                     self.forward_activity_mean_subtracted['Input'] = x.detach().clone()
                 else:
                     self.forward_activity_mean_subtracted['Input'] = x.detach().clone()
@@ -293,7 +293,7 @@ class Net(nn.Module):
             inputs = inputs.to(device).float()
             labels = labels.to(device).long()
 
-            outputs = self.forward(inputs, testing)
+            outputs = self.forward(inputs, store=True, testing=True)
             _, predicted = torch.max(outputs, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
@@ -322,7 +322,7 @@ class Net(nn.Module):
         self.to(device)
         self.train()
         self.training_losses = []
-        train_step = 0
+        train_step = 1
         self.averaged_accuracy = []
         self.train_steps_list = []
 
