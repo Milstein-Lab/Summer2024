@@ -36,9 +36,9 @@ def main(description, seed, export, export_file_path):
     X_test, y_test, X_train, y_train, test_loader, train_loader, data_fig = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=False)
 
     accuracy_history = []
-    start = 0.1
-    end = 0.3
-    step = 0.1
+    start = 0.01
+    end = 0.20
+    step = 0.01
     learning_rates = np.arange(start, end + step, step)
     criterion = "MSELoss"
     num_epochs = 2
@@ -46,12 +46,22 @@ def main(description, seed, export, export_file_path):
         spiral.set_seed(network_seed)
         local_torch_random.manual_seed(data_order_seed)
 
+        if "ojas_dend" in description:
+            mean_subtract_input = True
+        else:
+            mean_subtract_input = False
         if "learned_bias" in description:
-            net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=True).to(DEVICE)
+            use_bias = True
+            learn_bias = True
         elif "zero_bias" in description:
-            net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=False, learn_bias=False).to(DEVICE)
+            use_bias = False
+            learn_bias = False
         elif "fixed_bias" in description:
-            net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=True, learn_bias=False).to(DEVICE)
+            use_bias = True
+            learn_bias = False
+
+        net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=use_bias,
+                  learn_bias=learn_bias, mean_subtract_input=mean_subtract_input).to(DEVICE)
 
         acc = net.train_model(description, i, criterion, train_loader, debug=False, num_epochs=num_epochs, verbose=True, device=DEVICE)
 
