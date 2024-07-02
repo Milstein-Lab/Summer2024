@@ -6,3 +6,5 @@ __pycache__
 data
 screen_data
 figures
+svg_figures
+pkl_data

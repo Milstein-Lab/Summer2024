@@ -82,7 +82,9 @@ def main(description, seed, export, export_file_path):
     plt.ylabel('Accuracy')
     plt.title(f'Learning Rate Screen for {label_dict[description]}')
     if export:
-        plt.savefig(f'{export_file_path}/{description}_screen_{start}-{end}.svg', format='svg')
+        os.makedirs('svg_figures', exist_ok=True)
+        os.makedirs(export_file_path, exist_ok=True)
+        plt.savefig(f'svg_figures/{description}_screen_{start}-{end}.svg', format='svg')
         plt.savefig(f'{export_file_path}/{description}_screen_{start}-{end}.png', format='png')
     fig.show()
 
