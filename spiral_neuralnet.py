@@ -16,7 +16,9 @@ import pickle
 import os
 import click
 import traceback
+import time
 
+start_time = time.time()
 
 # set_seed() and seed_worker()
 def set_seed(seed=None, seed_torch=True, verbose=False):
@@ -926,15 +928,15 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                 'dend_EI_contrast_zero_bias': 'Dendritic EI Contrast Zero Bias',
                 'dend_EI_contrast_fixed_bias': 'Dendritic EI Contrast Fixed Bias'}
     
-    lr_dict = {'backprop_learned_bias': 0.1, # TODO Screen everything again
+    lr_dict = {'backprop_learned_bias': 0.1, # screened
                'backprop_zero_bias': 0.01,
-               'backprop_fixed_bias': 0.08,
+               'backprop_fixed_bias': 0.06, # screened
                'dend_temp_contrast_learned_bias': 0.13,
                'dend_temp_contrast_zero_bias': 0.01,
                'dend_temp_contrast_fixed_bias': 0.10,
                'ojas_dend_learned_bias': 0.13,
                'ojas_dend_zero_bias': 0.01,
-               'ojas_dend_fixed_bias': 0.05,  # 0.021,
+               'ojas_dend_fixed_bias': 0.05,
                'dend_EI_contrast_learned_bias': 0.11,
                'dend_EI_contrast_zero_bias': 0.01,
                'dend_EI_contrast_fixed_bias': 0.031}
@@ -997,3 +999,7 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
 
 if __name__ == "__main__":
     main(standalone_mode=False)
+
+end_time = time.time()
+total_time = end_time - start_time
+print(f"Total execution time: {total_time:.3f} seconds")

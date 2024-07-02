@@ -16,7 +16,7 @@ def objective(trial, description, base_seed):
     # Parameters to be optimized
     learning_rate = trial.suggest_float('learning_rate', start, end, step=step)
     num_seeds = 5
-    num_epochs = 2
+    num_epochs = 1
     accuracy_list = []
 
     for seed_offset in range(num_seeds):
