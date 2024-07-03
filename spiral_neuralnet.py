@@ -929,7 +929,7 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                 'dend_EI_contrast_fixed_bias': 'Dendritic EI Contrast Fixed Bias'}
     
     lr_dict = {'backprop_learned_bias': 0.1, # screened
-               'backprop_zero_bias': 0.26, #screened
+               'backprop_zero_bias': 0.01, #screened
                'backprop_fixed_bias': 0.06, # screened
                'dend_temp_contrast_learned_bias': 0.14, #screened
                'dend_temp_contrast_zero_bias': 0.01,#screened
@@ -1002,4 +1002,4 @@ if __name__ == "__main__":
 
 end_time = time.time()
 total_time = end_time - start_time
-print(f"Total execution time: {total_time:.3f} seconds")
+# print(f"Total execution time: {total_time:.3f} seconds")

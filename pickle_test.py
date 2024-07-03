@@ -31,7 +31,7 @@ def main(description):
                 'dend_EI_contrast_zero_bias': 'Dendritic EI Contrast Zero Bias',
                 'dend_EI_contrast_fixed_bias': 'Dendritic EI Contrast Fixed Bias'}
 
-    with open("data/spiralNet_exported_model_data.pkl", "rb") as f:
+    with open(f"pkl_data/{description}_model.pkl]", "rb") as f:
         model_data_dict = pickle.load(f)
 
     net = model_data_dict[description]
