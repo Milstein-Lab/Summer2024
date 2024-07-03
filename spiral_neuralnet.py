@@ -927,18 +927,18 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                 'dend_EI_contrast_zero_bias': 'Dendritic EI Contrast Zero Bias',
                 'dend_EI_contrast_fixed_bias': 'Dendritic EI Contrast Fixed Bias'}
     
-    lr_dict = {'backprop_learned_bias': 0.12,
+    lr_dict = {'backprop_learned_bias': 0.1,
                'backprop_zero_bias': 0.01, 
-               'backprop_fixed_bias': 0.09,
-               'dend_temp_contrast_learned_bias': 0.13,
+               'backprop_fixed_bias': 0.06, 
+               'dend_temp_contrast_learned_bias': 0.14, 
                'dend_temp_contrast_zero_bias': 0.01,
-               'dend_temp_contrast_fixed_bias': 0.10,
-               'ojas_dend_learned_bias': 0.13,
-               'ojas_dend_zero_bias': 0.01,
-               'ojas_dend_fixed_bias': 0.05,
+               'dend_temp_contrast_fixed_bias': 0.07,
+               'ojas_dend_learned_bias': 0.01,
+               'ojas_dend_zero_bias': 0.02, 
+               'ojas_dend_fixed_bias': 0.04,
                'dend_EI_contrast_learned_bias': 0.11,
-               'dend_EI_contrast_zero_bias': 0.01,
-               'dend_EI_contrast_fixed_bias': 0.031}
+               'dend_EI_contrast_zero_bias': 0.010,
+               'dend_EI_contrast_fixed_bias': 0.07}
 
     criterion = "MSELoss"
     num_epochs = 1
