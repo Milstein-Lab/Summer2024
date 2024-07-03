@@ -164,10 +164,10 @@ class Net(nn.Module):
         self.backward_dend_state = {}
         self.nudges = {}
         self.backward_activity = {}
-
+        
+        self.recurrent_layers = {}
+        self.recurrent_weights = {}
         if 'dend_EI_contrast' in self.description:
-            self.recurrent_layers = {}
-            self.recurrent_weights = {}
             for i, num in enumerate(self.hidden_unit_nums):
                 layer = f'H{i+1}'
                 self.recurrent_layers[layer] = nn.Linear(num, num, bias=False)
@@ -325,10 +325,11 @@ class Net(nn.Module):
         self.backward_dend_state_train_history = {}
         self.nudges_train_history = {}
         self.weights_train_history = {}
+        self.recurrent_weights_train_history = {}
         self.forward_activity_train_history['Input'] = []
         if self.mean_subtract_input:
             self.forward_activity_mean_subtracted_train_history['Input'] = []
-        for key, layer in self.layers.items():
+        for key in self.layers:
             self.forward_soma_state_train_history[key] = []
             self.forward_activity_train_history[key] = []
             if self.mean_subtract_input:
@@ -338,6 +339,7 @@ class Net(nn.Module):
             self.backward_dend_state_train_history[key] = []
             self.nudges_train_history[key] = []
             self.weights_train_history[key] = []
+            self.recurrent_weights_train_history[key] = []
         
         self.train_labels = []
         self.predicted_labels = []
@@ -372,7 +374,7 @@ class Net(nn.Module):
                 inputs = inputs.to(device).float()
                 labels = labels.to(device).long()
 
-                self.train_labels.append(labels)
+                self.train_labels.append(labels.item())
 
                 # forward pass
                 outputs = self.forward(inputs, num_samples=100, testing=False)
@@ -503,10 +505,13 @@ class Net(nn.Module):
             if layer == 'Out':
                 self.nudges[layer] = (2.0 / self.output_feature_num) * self.ReLU_derivative(
                     self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])
+                self.nudges[layer].clamp_(-1., 1.)
             else:
                 upper_layer = reverse_layers[idx - 1]
                 self.forward_dend_state[layer] = self.forward_activity[upper_layer] @ self.weights[upper_layer] + self.recurrent_layers[layer](self.forward_activity[layer])
+                self.forward_dend_state[layer].clamp_(-1., 1.)
                 self.backward_dend_state[layer] = self.backward_activity[upper_layer] @ self.weights[upper_layer] + self.recurrent_layers[layer](self.forward_activity[layer])
+                self.backward_dend_state[layer].clamp_(-1., 1.)
                 self.nudges[layer] = self.backward_dend_state[layer] * self.ReLU_derivative(self.forward_soma_state[layer])
             self.backward_activity[layer] = self.activation_functions[layer](self.forward_soma_state[layer] + self.nudges[layer])
     
@@ -514,9 +519,9 @@ class Net(nn.Module):
         with torch.no_grad():
             lower_layer = 'Input'
             for layer in self.layers.keys():
-                self.weights[layer].data += lr * torch.outer(self.nudges[layer].squeeze(), self.forward_activity[lower_layer].squeeze())
+                self.weights[layer].data += lr * torch.outer(self.nudges[layer].squeeze(), torch.clamp(self.forward_activity[lower_layer].squeeze(), 0., 1.))
                 if layer != 'Out':
-                    self.recurrent_weights[layer].data += -1 * lr * self.forward_dend_state[layer].T @ self.forward_activity[layer]
+                    self.recurrent_weights[layer].data += -1 * lr * self.forward_dend_state[layer].T @ torch.clamp(self.forward_activity[layer], 0., 1.)
                 if self.use_bias and self.learn_bias:
                     self.biases[layer].data += lr * self.nudges[layer].squeeze()
                 lower_layer = layer
@@ -534,6 +539,8 @@ class Net(nn.Module):
                 
             # store a copy of the weights in a weight_history dict
             self.weights_train_history[key].append(self.weights[key].data.clone())
+            if key in self.recurrent_weights:
+                self.recurrent_weights_train_history[key].append(self.recurrent_weights[key].data.clone())
             
             if key in self.nudges:
                 self.nudges_train_history[key].append(self.nudges[key])
@@ -566,8 +573,11 @@ class Net(nn.Module):
                     torch.stack(self.backward_activity_train_history[key]).squeeze())
             if self.weights_train_history[key]:
                 self.weights_train_history[key] = torch.stack(self.weights_train_history[key]).squeeze()
+            if self.recurrent_weights_train_history[key]:
+                self.recurrent_weights_train_history[key] = (
+                    torch.stack(self.recurrent_weights_train_history[key]).squeeze())
         
-        self.train_labels = torch.stack(self.train_labels)
+        self.train_labels = torch.tensor(self.train_labels)
         self.training_losses = torch.tensor(self.training_losses)
         self.train_steps = torch.tensor(self.train_steps)
         self.train_accuracy = torch.tensor(self.train_accuracy)
