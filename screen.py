@@ -10,45 +10,33 @@ import os
 import spiral_neuralnet as spiral
 from spiral_neuralnet import *
 
+# Run multiple descriptions at once with screen_concurrently.py (will use more CPU cores)
+
 local_torch_random = torch.Generator()
 
 def objective(trial, description, base_seed):
-    # Parameters to be optimized
-    learning_rate = trial.suggest_float('learning_rate', start, end, step=step)
+    learning_rate = trial.suggest_float('learning_rate', start, end)
     num_seeds = 5
     num_epochs = 1
     accuracy_list = []
 
     for seed_offset in range(num_seeds):
-        # Set seeds
         data_split_seed = 0  # Fixed seed for data split
         network_seed = base_seed + seed_offset * 10 + 1
         data_order_seed = base_seed + seed_offset * 10 + 2
 
-        # Data generation
         spiral.set_seed(data_split_seed)
         local_torch_random.manual_seed(data_order_seed)
         _, _, X_train, _, _, _, _, train_loader, val_loader, _ = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=False)
-        
-        # Network initialization
-        if "ojas_dend" in description:
-            mean_subtract_input = True
-        else:
-            mean_subtract_input = False
-        if "learned_bias" in description:
-            use_bias = True
-            learn_bias = True
-        elif "zero_bias" in description:
-            use_bias = False
-            learn_bias = False
-        elif "fixed_bias" in description:
-            use_bias = True
-            learn_bias = False
+
+        mean_subtract_input = "ojas_dend" in description
+        use_bias = "learned_bias" in description or "fixed_bias" in description
+        learn_bias = "learned_bias" in description
+        use_bias = use_bias and not "zero_bias" in description
 
         net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=use_bias,
                   learn_bias=learn_bias, lr=learning_rate, mean_subtract_input=mean_subtract_input).to(DEVICE)
 
-        # Training
         acc = net.train_model(description, learning_rate, criterion, train_loader, val_loader, debug=False, num_epochs=num_epochs, verbose=False, device=DEVICE)
         accuracy_list.append(acc)
 
@@ -56,16 +44,16 @@ def objective(trial, description, base_seed):
     return avg_accuracy
 
 @click.command()
-@click.option('--description', required=True, type=str, default='backprop_learned_bias')
+@click.option('--description', required=True, type=str)
 @click.option('--export', is_flag=True)
 @click.option('--export_file_path', type=click.Path(file_okay=True), default='screen_data')
-def main(description, export, export_file_path):
-    global num_classes, criterion, start, end, step, DEVICE
+@click.option('--standalone', is_flag=True, help='Run in standalone mode and save to screen_data_history.pkl')
+def main(description, export, export_file_path, standalone):
+    global num_classes, criterion, start, end, DEVICE
     base_seed = 0
     num_classes = 4
     start = 0.01
     end = 0.3
-    step = 0.01
     criterion = "MSELoss"
     DEVICE = spiral.set_device()
 
@@ -81,13 +69,7 @@ def main(description, export, export_file_path):
                 'dend_EI_contrast_learned_bias': 'Dendritic EI Contrast Learned Bias',
                 'dend_EI_contrast_zero_bias': 'Dendritic EI Contrast Zero Bias',
                 'dend_EI_contrast_fixed_bias': 'Dendritic EI Contrast Fixed Bias'}
-    
-    # Load existing data if available
-    screen_data_dict = {}   
-    if os.path.exists('pkl_data/screen_data_history.pkl'):
-        with open('pkl_data/screen_data_history.pkl', 'rb') as f:
-            screen_data_dict = pickle.load(f)
-    
+
     # Run the Optuna study
     study = optuna.create_study(direction='maximize')
     study.optimize(lambda trial: objective(trial, description, base_seed), n_trials=20)
@@ -101,16 +83,31 @@ def main(description, export, export_file_path):
     learning_rates = [trial.params['learning_rate'] for trial in trials]
     accuracies = [trial.value for trial in trials]
 
-    # Update the data dictionary
-    screen_data_dict[description] = {
+    screen_data_dict = {
         'learning_rates': learning_rates,
         'accuracies': accuracies
     }
 
-    # Save the updated dictionary
-    os.makedirs('pkl_data', exist_ok=True)
-    with open('pkl_data/screen_data_history.pkl', 'wb') as f:
-        pickle.dump(screen_data_dict, f)
+    if standalone:
+        # Load existing data if available
+        if os.path.exists('pkl_data/screen_data_history.pkl'):
+            with open('pkl_data/screen_data_history.pkl', 'rb') as f:
+                screen_data_history = pickle.load(f)
+        else:
+            screen_data_history = {}
+
+        screen_data_history[description] = screen_data_dict
+
+        # Save the updated history
+        os.makedirs('pkl_data', exist_ok=True)
+        with open('pkl_data/screen_data_history.pkl', 'wb') as f:
+            pickle.dump(screen_data_history, f)
+    else:
+        # Save the results to a unique pickle file
+        result_file_path = f'pkl_data/screen_data_{description}.pkl'
+        os.makedirs('pkl_data', exist_ok=True)
+        with open(result_file_path, 'wb') as f:
+            pickle.dump(screen_data_dict, f)
 
     # Plot results
     best_idx = np.argmax(accuracies)
@@ -135,6 +132,12 @@ def main(description, export, export_file_path):
     fig.show()
 
     plt.show()
+
+    print(f'Completed: {description}')
+    if standalone:
+        print(f'Saved to: pkl_data/screen_data_history.pkl')
+    else:
+        print(f'Saved to: {result_file_path}')
 
 if __name__ == "__main__":
     main(standalone_mode=False)

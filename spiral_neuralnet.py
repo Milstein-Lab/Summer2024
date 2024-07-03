@@ -1,5 +1,4 @@
 # Imports
-import pathlib
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -340,6 +339,58 @@ class Net(nn.Module):
         
         self.train_labels = []
         self.predicted_labels = []
+     
+    def train_model(self, description, lr, train_loader, val_loader, debug=False, num_train_steps=None, num_epochs=1, verbose=False, device='cpu'):
+        """
+        Train model with learning rules, accumulate loss, evaluate performance
+    
+        Args:
+        - description (string): Description of model to train
+        - lr (float): Learning rate
+        - train_loader (torch.utils.data type): Combines the train dataset and sampler, and provides an iterable over the given dataset
+        - val_loader (torch.utils.data type): Contains a validation dataset as a single batch
+        - debug (boolean): If True, enters debug mode.
+        - num_train_steps (int): Stops train loop after specified number of steps
+        - num_epochs (int): Number of epochs [default: 1]
+        - verbose (boolean): If True, print statistics
+        - device (string): CUDA/GPU if available, CPU otherwise
+    
+        Returns:
+        - train_acc (int): Accuracy of model on train data
+        """
+        self.to(device)
+        self.train()
+        self.training_losses = []
+        
+        self.train_accuracy = []
+        self.train_steps = []
+        
+        # Create dictionaries for train state and activities
+        self.forward_soma_state_train_history = {}
+        self.forward_activity_train_history = {}
+        self.backward_activity_train_history = {}
+        if self.mean_subtract_input:
+            self.forward_activity_mean_subtracted_train_history = {}
+        self.forward_dend_state_train_history = {}
+        self.backward_dend_state_train_history = {}
+        self.nudges_train_history = {}
+        self.weights_train_history = {}
+        self.forward_activity_train_history['Input'] = []
+        if self.mean_subtract_input:
+            self.forward_activity_mean_subtracted_train_history['Input'] = []
+        for key, layer in self.layers.items():
+            self.forward_soma_state_train_history[key] = []
+            self.forward_activity_train_history[key] = []
+            if self.mean_subtract_input:
+                self.forward_activity_mean_subtracted_train_history[key] = []
+            self.backward_activity_train_history[key] = []
+            self.forward_dend_state_train_history[key] = []
+            self.backward_dend_state_train_history[key] = []
+            self.nudges_train_history[key] = []
+            self.weights_train_history[key] = []
+        
+        self.train_labels = []
+        self.predicted_labels = []
     
     def train_model(self, description, lr, criterion, train_loader, val_loader, debug=False, num_train_steps=None, num_epochs=1, verbose=False, device='cpu'):
         """
@@ -384,17 +435,14 @@ class Net(nn.Module):
                     acc = correct
                     self.train_accuracy.append(acc)
                     self.train_steps.append(train_step)
-                
-                # Decide criterion function
-                criterion_function = eval(f"nn.{criterion}()")
-                if criterion == "MSELoss":
-                    targets = torch.zeros((inputs.shape[0], self.output_feature_num))
-                    for row in range(len(labels)):
-                        col = labels[row].int()
-                        targets[row][col] = 1
-                    loss = criterion_function(outputs, targets)
-                elif criterion == "CrossEntropyLoss":
-                    loss = criterion_function(outputs, labels)
+                    
+                # Make targets based on criterion function
+                criterion_function = eval(f"nn.MSELoss()")
+                targets = torch.zeros((inputs.shape[0], self.output_feature_num))
+                for row in range(len(labels)):
+                    col = labels[row].int()
+                    targets[row][col] = 1
+                loss = criterion_function(outputs, targets)
                     
                 # Choose learning rule
                 if 'backprop' in description:
@@ -929,14 +977,6 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
 
     X_test, y_test, X_train, y_train, X_val, y_val, test_loader, train_loader, val_loader, data_fig = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=show_plot or save_plot)
 
-    def train_and_handle_debug(net, description, lr, criterion, train_loader, test_loader, debug, num_train_steps, num_epochs, device):
-        try:
-            net.train_model(description, lr, criterion, train_loader, val_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=device)
-        except AssertionError:
-            print(f"{num_train_steps} train steps completed.")
-        except Exception as e:
-            traceback.print_exc()
-
     # Train and Test model
     set_seed(network_seed)
 
@@ -953,20 +993,19 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                 'dend_EI_contrast_zero_bias': 'Dendritic EI Contrast Zero Bias',
                 'dend_EI_contrast_fixed_bias': 'Dendritic EI Contrast Fixed Bias'}
     
-    lr_dict = {'backprop_learned_bias': 0.1, # screened
+    lr_dict = {'backprop_learned_bias': 0.1,
                'backprop_zero_bias': 0.01,
-               'backprop_fixed_bias': 0.06, # screened
-               'dend_temp_contrast_learned_bias': 0.13,
+               'backprop_fixed_bias': 0.06,
+               'dend_temp_contrast_learned_bias': 0.14,
                'dend_temp_contrast_zero_bias': 0.01,
-               'dend_temp_contrast_fixed_bias': 0.10,
-               'ojas_dend_learned_bias': 0.13,
-               'ojas_dend_zero_bias': 0.01,
-               'ojas_dend_fixed_bias': 0.05,
+               'dend_temp_contrast_fixed_bias': 0.07,
+               'ojas_dend_learned_bias': 0.01,
+               'ojas_dend_zero_bias': 0.02,
+               'ojas_dend_fixed_bias': 0.04,
                'dend_EI_contrast_learned_bias': 0.11,
-               'dend_EI_contrast_zero_bias': 0.01,
-               'dend_EI_contrast_fixed_bias': 0.031}
+               'dend_EI_contrast_zero_bias': 0.010,
+               'dend_EI_contrast_fixed_bias': 0.07}
 
-    criterion = "MSELoss"
     num_epochs = 1
     local_torch_random.manual_seed(data_order_seed)
     if "ojas_dend" in description:
@@ -988,9 +1027,14 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
     
     if debug:
         net.register_hooks()
-        train_and_handle_debug(net, description, lr_dict[description], criterion, train_loader, val_loader, debug, num_train_steps, num_epochs, DEVICE)
+        try:
+            net.train_model(description, lr_dict[description], train_loader, val_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=DEVICE)
+        except AssertionError:
+            print(f"{num_train_steps} train steps completed.")
+        except Exception as e:
+            traceback.print_exc()
     else:
-        val_acc = net.train_model(description, lr_dict[description], criterion, train_loader, val_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=DEVICE)
+        val_acc = net.train_model(description, lr_dict[description], train_loader, val_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=DEVICE)
         test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
 
         plot_title = label_dict[description]
@@ -1027,4 +1071,4 @@ if __name__ == "__main__":
 
 end_time = time.time()
 total_time = end_time - start_time
-print(f"Total execution time: {total_time:.3f} seconds")
+# print(f"Total execution time: {total_time:.3f} seconds")
