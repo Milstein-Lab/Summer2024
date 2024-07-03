@@ -1,5 +1,4 @@
 # Imports
-import pathlib
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
@@ -310,7 +309,7 @@ class Net(nn.Module):
     
     def train_model(self, description, lr, criterion, train_loader, val_loader, debug=False, num_train_steps=None, num_epochs=1, verbose=False, device='cpu'):
         """
-        Train model with backprop, accumulate loss, evaluate performance
+        Train model with learning rules, accumulate loss, evaluate performance
     
         Args:
         - description (string): Description of model to train
@@ -928,9 +927,9 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                 'dend_EI_contrast_zero_bias': 'Dendritic EI Contrast Zero Bias',
                 'dend_EI_contrast_fixed_bias': 'Dendritic EI Contrast Fixed Bias'}
     
-    lr_dict = {'backprop_learned_bias': 0.12, # screened
+    lr_dict = {'backprop_learned_bias': 0.12,
                'backprop_zero_bias': 0.01, 
-               'backprop_fixed_bias': 0.09, # screened
+               'backprop_fixed_bias': 0.09,
                'dend_temp_contrast_learned_bias': 0.13,
                'dend_temp_contrast_zero_bias': 0.01,
                'dend_temp_contrast_fixed_bias': 0.10,
