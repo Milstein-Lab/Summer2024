@@ -372,7 +372,6 @@ class Net(nn.Module):
         train_step = 0
         criterion_function = eval(f"nn.MSELoss()")
 
-        
         for epoch in tqdm(range(num_epochs)):  # Loop over the dataset multiple times
             for i, data in enumerate(train_loader, 0):
                 # Get the inputs; data is a list of [input, label]
@@ -930,13 +929,35 @@ def generate_data(K=4, sigma=0.16, N=2000, seed=None, gen=None, display=True):
 @click.option('--seed', type=int, default=0)
 @click.option('--debug', is_flag=True)
 @click.option('--num_train_steps', type=int, default=1)
-def main(description, show_plot, save_plot, interactive, export, export_file_path, seed, debug, num_train_steps):
-    data_split_seed = 0
-    network_seed = seed + 1
-    data_order_seed = seed + 2
-    DEVICE = set_device()
-    local_torch_random = torch.Generator()
+@click.option('--test_seeds', is_flag=True)
+def main(description, show_plot, save_plot, interactive, export, export_file_path, seed, debug, num_train_steps, test_seeds):
 
+    label_dict = {'backprop_learned_bias': 'Backprop Learned Bias',
+                    'backprop_zero_bias': 'Backprop Zero Bias',
+                    'backprop_fixed_bias': 'Backprop Fixed Bias',
+                    'dend_temp_contrast_learned_bias': 'Dendritic Temporal Contrast Learned Bias',
+                    'dend_temp_contrast_zero_bias': 'Dendritic Temporal Contrast Zero Bias',
+                    'dend_temp_contrast_fixed_bias': 'Dendritic Temporal Contrast Fixed Bias',
+                    'ojas_dend_learned_bias': 'Oja\'s Rule Learned Bias',
+                    'ojas_dend_zero_bias': 'Oja\'s Zero Bias',
+                    'ojas_dend_fixed_bias': 'Oja\'s Fixed Bias',
+                    'dend_EI_contrast_learned_bias': 'Dendritic EI Contrast Learned Bias',
+                    'dend_EI_contrast_zero_bias': 'Dendritic EI Contrast Zero Bias',
+                    'dend_EI_contrast_fixed_bias': 'Dendritic EI Contrast Fixed Bias'}
+        
+    lr_dict = {'backprop_learned_bias': 0.1,
+                'backprop_zero_bias': 0.01,
+                'backprop_fixed_bias': 0.06,
+                'dend_temp_contrast_learned_bias': 0.14,
+                'dend_temp_contrast_zero_bias': 0.01,
+                'dend_temp_contrast_fixed_bias': 0.07,
+                'ojas_dend_learned_bias': 0.01,
+                'ojas_dend_zero_bias': 0.02,
+                'ojas_dend_fixed_bias': 0.04,
+                'dend_EI_contrast_learned_bias': 0.101,
+                'dend_EI_contrast_zero_bias': 0.179,
+                'dend_EI_contrast_fixed_bias': 0.068}
+    
     num_classes = 4
     if save_plot:
         save_path = "figures"
@@ -946,93 +967,96 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
     else:
         save_path = None
 
-    X_test, y_test, X_train, y_train, X_val, y_val, test_loader, train_loader, val_loader, data_fig = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=show_plot or save_plot)
+    def generate_train_test(seed, description, num_train_steps, num_epochs, debug):
+        data_split_seed = 0
+        network_seed = seed + 1
+        data_order_seed = seed + 2
+        DEVICE = set_device()
+        local_torch_random = torch.Generator()
 
-    # Train and Test model
-    set_seed(network_seed)
+        X_test, y_test, X_train, y_train, X_val, y_val, test_loader, train_loader, val_loader, data_fig = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=show_plot or save_plot)
 
-    label_dict = {'backprop_learned_bias': 'Backprop Learned Bias',
-                'backprop_zero_bias': 'Backprop Zero Bias',
-                'backprop_fixed_bias': 'Backprop Fixed Bias',
-                'dend_temp_contrast_learned_bias': 'Dendritic Temporal Contrast Learned Bias',
-                'dend_temp_contrast_zero_bias': 'Dendritic Temporal Contrast Zero Bias',
-                'dend_temp_contrast_fixed_bias': 'Dendritic Temporal Contrast Fixed Bias',
-                'ojas_dend_learned_bias': 'Oja\'s Rule Learned Bias',
-                'ojas_dend_zero_bias': 'Oja\'s Zero Bias',
-                'ojas_dend_fixed_bias': 'Oja\'s Fixed Bias',
-                'dend_EI_contrast_learned_bias': 'Dendritic EI Contrast Learned Bias',
-                'dend_EI_contrast_zero_bias': 'Dendritic EI Contrast Zero Bias',
-                'dend_EI_contrast_fixed_bias': 'Dendritic EI Contrast Fixed Bias'}
+        # Train and Test model
+        set_seed(network_seed)
+
+        num_epochs = 1
+        local_torch_random.manual_seed(data_order_seed)
+        if "ojas_dend" in description:
+            mean_subtract_input = True
+        else:
+            mean_subtract_input = False
+        if "learned_bias" in description:
+            use_bias = True
+            learn_bias = True
+        elif "zero_bias" in description:
+            use_bias = False
+            learn_bias = False
+        elif "fixed_bias" in description:
+            use_bias = True
+            learn_bias = False
+        
+        net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=use_bias,
+                    learn_bias=learn_bias, lr=lr_dict[description], mean_subtract_input=mean_subtract_input).to(DEVICE)
+        
+        if debug:
+            net.register_hooks()
+            try:
+                net.train_model(description, lr_dict[description], train_loader, val_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=DEVICE)
+            except AssertionError:
+                print(f"{num_train_steps} train steps completed.")
+            except Exception as e:
+                traceback.print_exc()
+        else:
+            val_acc = net.train_model(description, lr_dict[description], train_loader, val_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=DEVICE)
+            test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
+
+            plot_title = label_dict[description]
+            summary_fig = net.display_summary(test_loader, test_acc, title=plot_title, save_path=None, show_plot=False)
+            params_fig = net.plot_params(title=plot_title, save_path=None, show_plot=False)
+
+            if save_plot:
+                data_fig.savefig(f'{save_path}/data.png', bbox_inches='tight', format='png')
+                data_fig.savefig(f'{svg_save_path}/data.svg', bbox_inches='tight', format='svg')
+                summary_fig.savefig(f'{save_path}/summary_{description}.png', bbox_inches='tight', format='png')
+                summary_fig.savefig(f'{svg_save_path}/summary_{description}.svg', bbox_inches='tight', format='svg')
+                params_fig.savefig(f'{save_path}/params_{description}.png', bbox_inches='tight', format='png')
+                params_fig.savefig(f'{svg_save_path}/params_{description}.svg', bbox_inches='tight', format='svg')
+
+            if show_plot:
+                plt.figure(data_fig.number)
+                plt.figure(summary_fig.number)
+                plt.figure(params_fig.number)
+                plt.show() 
+                
+        if export:
+            os.makedirs(export_file_path, exist_ok=True)
+            model_file_path = os.path.join(export_file_path, f"{description}_model.pkl")
+            with open(model_file_path, "wb") as f:
+                pickle.dump(net, f)
+            print(f"Network exported to {model_file_path}")
+        
+        return net, val_acc, test_acc
     
-    lr_dict = {'backprop_learned_bias': 0.1,
-               'backprop_zero_bias': 0.01,
-               'backprop_fixed_bias': 0.06,
-               'dend_temp_contrast_learned_bias': 0.14,
-               'dend_temp_contrast_zero_bias': 0.01,
-               'dend_temp_contrast_fixed_bias': 0.07,
-               'ojas_dend_learned_bias': 0.01,
-               'ojas_dend_zero_bias': 0.02,
-               'ojas_dend_fixed_bias': 0.04,
-               'dend_EI_contrast_learned_bias': 0.101,
-               'dend_EI_contrast_zero_bias': 0.179,
-               'dend_EI_contrast_fixed_bias': 0.068}
+    if test_seeds:
+        num_seeds = 5
+        val_accuracies = []
+        test_accuracies = []
+        
+        for seed_offset in range(num_seeds):
+            base_seed = seed + seed_offset * 10
+            net, val_acc, test_acc = generate_train_test(base_seed, description, num_train_steps, num_epochs=1, debug=debug)
+            val_accuracies.append(val_acc)
+            test_accuracies.append(test_acc)
 
-    num_epochs = 1
-    local_torch_random.manual_seed(data_order_seed)
-    if "ojas_dend" in description:
-        mean_subtract_input = True
+        avg_val_acc = np.mean(val_accuracies)
+        avg_test_acc = np.mean(test_accuracies)
+        
+        print(f"Averaged Validation Accuracy: {avg_val_acc:.3f}")
+        print(f"Averaged Test Accuracy: {avg_test_acc:.3f}")
+        
     else:
-        mean_subtract_input = False
-    if "learned_bias" in description:
-        use_bias = True
-        learn_bias = True
-    elif "zero_bias" in description:
-        use_bias = False
-        learn_bias = False
-    elif "fixed_bias" in description:
-        use_bias = True
-        learn_bias = False
+        generate_train_test(seed, description, num_train_steps, num_epochs=1, debug=debug)
     
-    net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=use_bias,
-                  learn_bias=learn_bias, lr=lr_dict[description], mean_subtract_input=mean_subtract_input).to(DEVICE)
-    
-    if debug:
-        net.register_hooks()
-        try:
-            net.train_model(description, lr_dict[description], train_loader, val_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=DEVICE)
-        except AssertionError:
-            print(f"{num_train_steps} train steps completed.")
-        except Exception as e:
-            traceback.print_exc()
-    else:
-        val_acc = net.train_model(description, lr_dict[description], train_loader, val_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=DEVICE)
-        test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
-
-        plot_title = label_dict[description]
-        summary_fig = net.display_summary(test_loader, test_acc, title=plot_title, save_path=None, show_plot=False)
-        params_fig = net.plot_params(title=plot_title, save_path=None, show_plot=False)
-
-        if save_plot:
-            data_fig.savefig(f'{save_path}/data.png', bbox_inches='tight', format='png')
-            data_fig.savefig(f'{svg_save_path}/data.svg', bbox_inches='tight', format='svg')
-            summary_fig.savefig(f'{save_path}/summary_{description}.png', bbox_inches='tight', format='png')
-            summary_fig.savefig(f'{svg_save_path}/summary_{description}.svg', bbox_inches='tight', format='svg')
-            params_fig.savefig(f'{save_path}/params_{description}.png', bbox_inches='tight', format='png')
-            params_fig.savefig(f'{svg_save_path}/params_{description}.svg', bbox_inches='tight', format='svg')
-
-        if show_plot:
-            plt.figure(data_fig.number)
-            plt.figure(summary_fig.number)
-            plt.figure(params_fig.number)
-            plt.show() 
-            
-    if export:
-        os.makedirs(export_file_path, exist_ok=True)
-        model_file_path = os.path.join(export_file_path, f"{description}_model.pkl")
-        with open(model_file_path, "wb") as f:
-            pickle.dump(net, f)
-        print(f"Network exported to {model_file_path}")
-
     if interactive:
         globals().update(locals())
 
