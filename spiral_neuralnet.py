@@ -341,67 +341,14 @@ class Net(nn.Module):
         
         self.train_labels = []
         self.predicted_labels = []
-     
+    
     def train_model(self, description, lr, train_loader, val_loader, debug=False, num_train_steps=None, num_epochs=1, verbose=False, device='cpu'):
-        """
-        Train model with learning rules, accumulate loss, evaluate performance
-    
-        Args:
-        - description (string): Description of model to train
-        - lr (float): Learning rate
-        - train_loader (torch.utils.data type): Combines the train dataset and sampler, and provides an iterable over the given dataset
-        - val_loader (torch.utils.data type): Contains a validation dataset as a single batch
-        - debug (boolean): If True, enters debug mode.
-        - num_train_steps (int): Stops train loop after specified number of steps
-        - num_epochs (int): Number of epochs [default: 1]
-        - verbose (boolean): If True, print statistics
-        - device (string): CUDA/GPU if available, CPU otherwise
-    
-        Returns:
-        - train_acc (int): Accuracy of model on train data
-        """
-        self.to(device)
-        self.train()
-        self.training_losses = []
-        
-        self.train_accuracy = []
-        self.train_steps = []
-        
-        # Create dictionaries for train state and activities
-        self.forward_soma_state_train_history = {}
-        self.forward_activity_train_history = {}
-        self.backward_activity_train_history = {}
-        if self.mean_subtract_input:
-            self.forward_activity_mean_subtracted_train_history = {}
-        self.forward_dend_state_train_history = {}
-        self.backward_dend_state_train_history = {}
-        self.nudges_train_history = {}
-        self.weights_train_history = {}
-        self.forward_activity_train_history['Input'] = []
-        if self.mean_subtract_input:
-            self.forward_activity_mean_subtracted_train_history['Input'] = []
-        for key, layer in self.layers.items():
-            self.forward_soma_state_train_history[key] = []
-            self.forward_activity_train_history[key] = []
-            if self.mean_subtract_input:
-                self.forward_activity_mean_subtracted_train_history[key] = []
-            self.backward_activity_train_history[key] = []
-            self.forward_dend_state_train_history[key] = []
-            self.backward_dend_state_train_history[key] = []
-            self.nudges_train_history[key] = []
-            self.weights_train_history[key] = []
-        
-        self.train_labels = []
-        self.predicted_labels = []
-    
-    def train_model(self, description, lr, criterion, train_loader, val_loader, debug=False, num_train_steps=None, num_epochs=1, verbose=False, device='cpu'):
         """
         Train model with backprop, accumulate loss, evaluate performance
     
         Args:
         - description (string): Description of model to train
         - lr (float): Learning rate
-        - criterion (torch.nn type): Loss function
         - train_loader (torch.utils.data type): Combines the train dataset and sampler, and provides an iterable over the given dataset
         - val_loader (torch.utils.data type): Contains a validation dataset as a single batch
         - debug (boolean): If True, enters debug mode.
