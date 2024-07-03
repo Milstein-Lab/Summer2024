@@ -307,14 +307,13 @@ class Net(nn.Module):
         acc = 100 * correct / total
         return total, acc
     
-    def train_model(self, description, lr, criterion, train_loader, val_loader, debug=False, num_train_steps=None, num_epochs=1, verbose=False, device='cpu'):
+    def train_model(self, description, lr, train_loader, val_loader, debug=False, num_train_steps=None, num_epochs=1, verbose=False, device='cpu'):
         """
         Train model with learning rules, accumulate loss, evaluate performance
     
         Args:
         - description (string): Description of model to train
         - lr (float): Learning rate
-        - criterion (torch.nn type): Loss function
         - train_loader (torch.utils.data type): Combines the train dataset and sampler, and provides an iterable over the given dataset
         - val_loader (torch.utils.data type): Contains a validation dataset as a single batch
         - debug (boolean): If True, enters debug mode.
@@ -387,16 +386,13 @@ class Net(nn.Module):
                         self.forward_activity_mean_subtracted_train_history[key].append(
                             self.forward_activity_mean_subtracted[key])
 
-                # Decide criterion function
-                criterion_function = eval(f"nn.{criterion}()")
-                if criterion == "MSELoss":
-                    targets = torch.zeros((inputs.shape[0], self.output_feature_num))
-                    for row in range(len(labels)):
-                        col = labels[row].int()
-                        targets[row][col] = 1
-                    loss = criterion_function(outputs, targets)
-                elif criterion == "CrossEntropyLoss":
-                    loss = criterion_function(outputs, labels)
+                # Make targets based on criterion function
+                criterion_function = eval(f"nn.MSELoss()")
+                targets = torch.zeros((inputs.shape[0], self.output_feature_num))
+                for row in range(len(labels)):
+                    col = labels[row].int()
+                    targets[row][col] = 1
+                loss = criterion_function(outputs, targets)
                     
                 # Choose learning rule
                 if 'backprop' in description:
@@ -903,14 +899,6 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
 
     X_test, y_test, X_train, y_train, X_val, y_val, test_loader, train_loader, val_loader, data_fig = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=show_plot or save_plot)
 
-    def train_and_handle_debug(net, description, lr, criterion, train_loader, test_loader, debug, num_train_steps, num_epochs, device):
-        try:
-            net.train_model(description, lr, criterion, train_loader, val_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=device)
-        except AssertionError:
-            print(f"{num_train_steps} train steps completed.")
-        except Exception as e:
-            traceback.print_exc()
-
     # Train and Test model
     set_seed(network_seed)
 
@@ -940,7 +928,6 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                'dend_EI_contrast_zero_bias': 0.010,
                'dend_EI_contrast_fixed_bias': 0.07}
 
-    criterion = "MSELoss"
     num_epochs = 1
     local_torch_random.manual_seed(data_order_seed)
     if "ojas_dend" in description:
@@ -962,9 +949,14 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
     
     if debug:
         net.register_hooks()
-        train_and_handle_debug(net, description, lr_dict[description], criterion, train_loader, val_loader, debug, num_train_steps, num_epochs, DEVICE)
+        try:
+            net.train_model(description, lr_dict[description], train_loader, val_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=DEVICE)
+        except AssertionError:
+            print(f"{num_train_steps} train steps completed.")
+        except Exception as e:
+            traceback.print_exc()
     else:
-        val_acc = net.train_model(description, lr_dict[description], criterion, train_loader, val_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=DEVICE)
+        val_acc = net.train_model(description, lr_dict[description], train_loader, val_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=DEVICE)
         test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
 
         plot_title = label_dict[description]
