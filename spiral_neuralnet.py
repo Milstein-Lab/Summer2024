@@ -136,6 +136,7 @@ class Net(nn.Module):
         - use_bias (boolean): If True, randomly initialize biases. If False, set all biases to 0.
         - learn_bias (boolean): If True, use learning rule to update biases. If False, otherwise.
         - mean_subtract_input (boolean): If True, forward method mean subtracts input before computing output
+
         Returns:
         - Nothing
         """
@@ -314,8 +315,8 @@ class Net(nn.Module):
         
         self.train_accuracy = []
         self.train_steps = []
+        self.avg_loss = []
         
-        # Create dictionaries for train state and activities
         self.forward_soma_state_train_history = {}
         self.forward_activity_train_history = {}
         self.backward_activity_train_history = {}
@@ -325,6 +326,7 @@ class Net(nn.Module):
         self.backward_dend_state_train_history = {}
         self.nudges_train_history = {}
         self.weights_train_history = {}
+        self.biases_train_history = {}
         self.recurrent_weights_train_history = {}
         self.forward_activity_train_history['Input'] = []
         if self.mean_subtract_input:
@@ -340,6 +342,8 @@ class Net(nn.Module):
             self.nudges_train_history[key] = []
             self.weights_train_history[key] = []
             self.recurrent_weights_train_history[key] = []
+            if self.use_bias or self.learn_bias:
+                self.biases_train_history[key] = []
         
         self.train_labels = []
         self.predicted_labels = []
@@ -366,34 +370,36 @@ class Net(nn.Module):
         self.train()
         self.reinit()
         train_step = 0
+        criterion_function = eval(f"nn.MSELoss()")
+
         
         for epoch in tqdm(range(num_epochs)):  # Loop over the dataset multiple times
             for i, data in enumerate(train_loader, 0):
-                # Get the inputs; data is a list of [inputs, labels]
-                inputs, labels = data
-                inputs = inputs.to(device).float()
-                labels = labels.to(device).long()
+                # Get the inputs; data is a list of [input, label]
+                input, label = data
+                input = input.to(device).float()
+                label = label.to(device).long()
 
-                self.train_labels.append(labels.item())
+                self.train_labels.append(label.item())
 
                 # forward pass
-                outputs = self.forward(inputs, num_samples=100, testing=False)
+                outputs = self.forward(input, num_samples=100, testing=False)                
                 _, predicted = torch.max(outputs, 1)
+                targets = torch.eye(self.output_feature_num)[label]
+
                 self.predicted_labels.append(predicted)
+
+                loss = criterion_function(outputs, targets)
+
+                # Track losses
+                self.training_losses.append(loss.item())
 
                 if train_step % 100 == 0:
                     correct = (torch.tensor(self.predicted_labels[-100:]) == torch.tensor(self.train_labels[-100:])).sum().item()
                     acc = correct
                     self.train_accuracy.append(acc)
-                    self.train_steps.append(train_step)
-                    
-                # Make targets based on criterion function
-                criterion_function = eval(f"nn.MSELoss()")
-                targets = torch.zeros((inputs.shape[0], self.output_feature_num))
-                for row in range(len(labels)):
-                    col = labels[row].int()
-                    targets[row][col] = 1
-                loss = criterion_function(outputs, targets)
+                    self.train_steps.append(train_step) 
+                    self.avg_loss.append(torch.mean(torch.tensor(self.training_losses[-100:])))                 
                 
                 # Choose learning rule
                 if 'backprop' in description:
@@ -403,9 +409,6 @@ class Net(nn.Module):
                 
                 self.store_train_history()
                 
-                # Track losses
-                self.training_losses.append(loss.item())
-
                 # Stop after one certain number of train step
                 train_step += 1
                 if debug and num_train_steps is not None:
@@ -418,6 +421,7 @@ class Net(nn.Module):
 
         val_total, val_acc = self.test(val_loader, device, testing=True)
         self.val_acc = val_acc
+        self.final_loss = self.training_losses[-1]
 
         # Store final weights and biases
         self.final_weights = {}
@@ -527,7 +531,6 @@ class Net(nn.Module):
                 lower_layer = layer
     
     def store_train_history(self):
-        
         # Store forward state and activity info
         self.forward_activity_train_history['Input'].append(self.forward_activity['Input'])
         for key in self.layers:
@@ -537,8 +540,10 @@ class Net(nn.Module):
                 self.forward_activity_mean_subtracted_train_history[key].append(
                     self.forward_activity_mean_subtracted[key])
                 
-            # store a copy of the weights in a weight_history dict
+            # store a copy of the weights and biases
             self.weights_train_history[key].append(self.weights[key].data.clone())
+            if self.use_bias or self.learn_bias:
+                self.biases_train_history[key].append(self.biases[key].data.clone())
             if key in self.recurrent_weights:
                 self.recurrent_weights_train_history[key].append(self.recurrent_weights[key].data.clone())
             
@@ -576,6 +581,9 @@ class Net(nn.Module):
             if self.recurrent_weights_train_history[key]:
                 self.recurrent_weights_train_history[key] = (
                     torch.stack(self.recurrent_weights_train_history[key]).squeeze())
+            if self.use_bias and self.learn_bias:
+                if self.biases_train_history[key]:
+                    self.biases_train_history[key] = torch.stack(self.biases_train_history[key]).squeeze()
         
         self.train_labels = torch.tensor(self.train_labels)
         self.training_losses = torch.tensor(self.training_losses)
@@ -715,14 +723,18 @@ class Net(nn.Module):
         axes[1][0].set_ylabel('Accuracy (%)')
         axes[1][0].legend(loc='best', frameon=False)
 
+        axes[1][1].plot(self.train_steps, self.avg_loss, label=f'Final Loss: {self.final_loss:.3f}')
+        axes[1][1].set_xlabel('Train Steps')
+        axes[1][1].set_ylabel('Loss')
+        axes[1][1].legend(loc='best', frameon=False)
+
         map = self.get_decision_map(inputs, labels, self.output_feature_num)
+        axes[1][2].imshow(map, extent=[-2, 2, -2, 2], cmap='jet', origin='lower')
+        axes[1][2].set_xlabel('x1')
+        axes[1][2].set_ylabel('x2')
+        axes[1][2].set_title('Predictions')
 
-        axes[1][1].imshow(map, extent=[-2, 2, -2, 2], cmap='jet', origin='lower')
-        axes[1][1].set_xlabel('x1')
-        axes[1][1].set_ylabel('x2')
-        axes[1][1].set_title('Predictions')
-
-        for j in range(2,num_layers):
+        for j in range(3, num_layers):
             axes[1][j].axis('off')
 
         if title is not None:
@@ -915,7 +927,7 @@ def generate_data(K=4, sigma=0.16, N=2000, seed=None, gen=None, display=True):
 @click.option('--interactive', is_flag=True)
 @click.option('--export', is_flag=True)
 @click.option('--export_file_path', type=click.Path(file_okay=True), default='pkl_data')
-@click.option('--seed', type=int, default=2021)
+@click.option('--seed', type=int, default=0)
 @click.option('--debug', is_flag=True)
 @click.option('--num_train_steps', type=int, default=1)
 def main(description, show_plot, save_plot, interactive, export, export_file_path, seed, debug, num_train_steps):
@@ -961,9 +973,9 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                'ojas_dend_learned_bias': 0.01,
                'ojas_dend_zero_bias': 0.02,
                'ojas_dend_fixed_bias': 0.04,
-               'dend_EI_contrast_learned_bias': 0.11,
-               'dend_EI_contrast_zero_bias': 0.010,
-               'dend_EI_contrast_fixed_bias': 0.07}
+               'dend_EI_contrast_learned_bias': 0.101,
+               'dend_EI_contrast_zero_bias': 0.179,
+               'dend_EI_contrast_fixed_bias': 0.068}
 
     num_epochs = 1
     local_torch_random.manual_seed(data_order_seed)

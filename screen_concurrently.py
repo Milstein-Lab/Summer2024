@@ -55,7 +55,7 @@ def main(description1, description2, description3, export, export_file_path):
     # Save merged results to a single file
     with open('pkl_data/screen_data_history.pkl', 'wb') as f:
         pickle.dump(screen_data_history, f)
-    print('Merged results saved to pkl_data/screen_data_history.pkl')
+        print('Merged results saved to pkl_data/screen_data_history.pkl')
 
 if __name__ == "__main__":
     main(standalone_mode=False)
