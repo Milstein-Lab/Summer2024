@@ -443,7 +443,7 @@ class Net(nn.Module):
                     col = labels[row].int()
                     targets[row][col] = 1
                 loss = criterion_function(outputs, targets)
-                    
+                
                 # Choose learning rule
                 if 'backprop' in description:
                     self.train_backprop(loss)
