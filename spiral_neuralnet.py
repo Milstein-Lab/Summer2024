@@ -229,7 +229,7 @@ class Net(nn.Module):
         - x (torch.tensor): Input data
         - num_samples (int): Number of samples
         - store (boolean): If True, store intermediate states and activities of each layer
-        - test (boolean): If True, expect full batch to be contained in x
+        - testing (boolean): If True, expect full batch to be contained in x
     
         Returns:
         - x (torch.tensor): Output data
@@ -287,6 +287,8 @@ class Net(nn.Module):
         Args:
         - data_loader (torch.utils.data type): Combines the test dataset and sampler, and provides an iterable over the given dataset
         - device (string): CUDA/GPU if available, CPU otherwise
+        - store (boolean): Pass to forward() to store intermediate states and values
+        - testing (boolean): Pass to forward() to contain full batch in inputs
     
         Returns:
         - acc (float): Performance of the network
@@ -548,7 +550,7 @@ class Net(nn.Module):
     def train_dend(self, description, targets, lr):
         '''
         Wrapper function for training models with dendritic learning rules
-        - Dendritic Temporal Contrast
+        - Dendritic Target Propagation Temporal Contrast
         - Oja's Rule
         - Dendritic Excitatory-Inhibitory (EI) Contrast
 
