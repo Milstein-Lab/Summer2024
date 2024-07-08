@@ -2,7 +2,7 @@
 
 This project runs on Python 3.11.
 
-## Installataion
+## Installation
 
 1. Clone the repository:
 ```

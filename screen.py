@@ -37,7 +37,7 @@ def objective(trial, description, base_seed):
         net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=use_bias,
                   learn_bias=learn_bias, lr=learning_rate, mean_subtract_input=mean_subtract_input).to(DEVICE)
 
-        acc = net.train_model(description, learning_rate, criterion, train_loader, val_loader, debug=False, num_epochs=num_epochs, verbose=False, device=DEVICE)
+        acc = net.train_model(description, learning_rate, train_loader, val_loader, debug=False, num_epochs=num_epochs, verbose=False, device=DEVICE)
         accuracy_list.append(acc)
 
     avg_accuracy = np.mean(accuracy_list)
@@ -52,7 +52,7 @@ def main(description, export, export_file_path, standalone):
     global num_classes, criterion, start, end, DEVICE
     base_seed = 0
     num_classes = 4
-    start = 0.01
+    start = 1e-10
     end = 0.3
     criterion = "MSELoss"
     DEVICE = spiral.set_device()
