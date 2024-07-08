@@ -17,7 +17,7 @@ local_torch_random = torch.Generator()
 def objective(trial, description, base_seed):
     learning_rate = trial.suggest_float('learning_rate', start, end)
     num_seeds = 5
-    num_epochs = 1
+    num_epochs = 2
     accuracy_list = []
 
     for seed_offset in range(num_seeds):
@@ -72,7 +72,7 @@ def main(description, export, export_file_path, standalone):
 
     # Run the Optuna study
     study = optuna.create_study(direction='maximize')
-    study.optimize(lambda trial: objective(trial, description, base_seed), n_trials=3)
+    study.optimize(lambda trial: objective(trial, description, base_seed), n_trials=20)
 
     # Get the best learning rate
     best_learning_rate = study.best_params['learning_rate']

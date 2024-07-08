@@ -122,8 +122,8 @@ class Net(nn.Module):
     Simulate MLP Network
     """
 
-    def __init__(self, actv, input_feature_num, hidden_unit_nums, output_feature_num, lr, description=None, use_bias=True,
-                 learn_bias=True, mean_subtract_input=False):
+    def __init__(self, actv, input_feature_num, hidden_unit_nums, output_feature_num, lr, extra_params=None, description=None, use_bias=True,
+                 learn_bias=True, mean_subtract_input=False,):
         """
         Initialize MLP Network parameters
     
@@ -145,10 +145,12 @@ class Net(nn.Module):
         self.input_feature_num = input_feature_num
         self.hidden_unit_nums = hidden_unit_nums
         self.output_feature_num = output_feature_num
+        self.extra_params = extra_params
         self.description = description
         self.use_bias = use_bias
         self.learn_bias = learn_bias
         self.mean_subtract_input = mean_subtract_input
+        self.lr = lr
 
         self.forward_soma_state = {} # states of all layers pre activation
         self.forward_activity = {} # activities of all layers post ReLU
@@ -220,7 +222,7 @@ class Net(nn.Module):
         self.mlp = nn.Sequential(*layers)
 
         if 'backprop' in self.description:
-            self.optimizer = optim.SGD(self.parameters(), lr=lr)
+            self.optimizer = optim.SGD(self.parameters(), lr=self.lr)
 
     def forward(self, x, num_samples=100, store=True, testing=True,):
         """
@@ -308,13 +310,12 @@ class Net(nn.Module):
         acc = 100 * correct / total
         return total, acc
     
-    def train_model(self, description, lr, criterion, train_loader, val_loader, debug=False, num_train_steps=None, num_epochs=1, verbose=False, device='cpu'):
+    def train_model(self, description, criterion, train_loader, val_loader, debug=False, num_train_steps=None, num_epochs=1, verbose=False, device='cpu'):
         """
         Train model with backprop, accumulate loss, evaluate performance
     
         Args:
         - description (string): Description of model to train
-        - lr (float): Learning rate
         - criterion (torch.nn type): Loss function
         - train_loader (torch.utils.data type): Combines the train dataset and sampler, and provides an iterable over the given dataset
         - val_loader (torch.utils.data type): Contains a validation dataset as a single batch
@@ -403,7 +404,7 @@ class Net(nn.Module):
                 if 'backprop' in description:
                     self.train_backprop(loss)
                 elif 'dend' in description:
-                    self.train_dend(description, targets, lr)
+                    self.train_dend(description, targets)
 
                 # store a copy of the weights in a weight_history dict
                 for key, layer in self.weights.items():
@@ -485,17 +486,18 @@ class Net(nn.Module):
             prev_layer = layer
 
     def backward_ojas(self, targets):
+        beta = self.extra_params['beta']
         prev_layer = None
         reverse_layers = list(self.layers.keys())[::-1]
         
         for layer in reverse_layers:
             if layer == 'Out':
-                self.nudges[layer] = self.ReLU_derivative(self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])  # the ReLU derivative term is dA/dz
+                self.nudges[layer] =  self.ReLU_derivative(self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])  # the ReLU derivative term is dA/dz
                 self.nudges_train_history[layer].append(self.nudges[layer])
             else:
                 self.forward_dend_state[layer] = self.forward_activity[prev_layer] @ self.weights[prev_layer]
                 self.backward_dend_state[layer] = self.backward_activity[prev_layer] @ self.weights[prev_layer]
-                self.nudges[layer] = self.ReLU_derivative(self.forward_soma_state[layer]) * (
+                self.nudges[layer] = beta * self.ReLU_derivative(self.forward_soma_state[layer]) * (
                         self.backward_dend_state[layer] - self.forward_dend_state[layer])
                 self.forward_dend_state_train_history[layer].append(self.nudges[layer])
                 self.backward_dend_state_train_history[layer].append(self.backward_dend_state[layer])
@@ -505,8 +507,9 @@ class Net(nn.Module):
                 self.forward_soma_state[layer] + self.nudges[layer])
             prev_layer = layer
     
-    def step_dend_temp_contrast(self, lr):
+    def step_dend_temp_contrast(self):
         # add beta scalars?
+        lr = self.lr
         with torch.no_grad():
             prev_layer = 'Input'
             for layer in self.layers.keys():
@@ -516,18 +519,20 @@ class Net(nn.Module):
                     self.biases[layer].data += lr * self.nudges[layer].squeeze()
                 prev_layer = layer
     
-    def step_ojas(self, lr):
+    def step_ojas(self):
+        lr = self.lr
+        # bias_lr = self.extra_params['bias_lr']
+        alpha = self.extra_params['alpha']
         with torch.no_grad():
             prev_layer = 'Input'
             for layer in self.layers.keys():
-                self.weights[layer].data += (lr * self.backward_activity[layer].T * (self.forward_activity_mean_subtracted[prev_layer] - self.backward_activity[layer].T * self.weights[layer].data))
+                self.weights[layer].data += (lr * self.backward_activity[layer].T * (self.forward_activity_mean_subtracted[prev_layer] - alpha * self.backward_activity[layer].T * self.weights[layer].data))
                 if self.use_bias and self.learn_bias:
                     self.biases[layer].data += lr * self.nudges[layer].squeeze()
                 prev_layer = layer
     
     def backward_dend_EI_contrast(self, targets):
         reverse_layers = list(self.layers.keys())[::-1]
-        
         for idx, layer in enumerate(reverse_layers):
             if layer == 'Out':
                 self.nudges[layer] = (2.0 / self.output_feature_num) * self.ReLU_derivative(
@@ -539,7 +544,8 @@ class Net(nn.Module):
                 self.nudges[layer] = self.backward_dend_state[layer] * self.ReLU_derivative(self.forward_soma_state[layer])
             self.backward_activity[layer] = self.activation_functions[layer](self.forward_soma_state[layer] + self.nudges[layer])
     
-    def step_dend_EI_contrast(self, lr):
+    def step_dend_EI_contrast(self):
+        lr = self.lr
         with torch.no_grad():
             lower_layer = 'Input'
             for layer in self.layers.keys():
@@ -550,7 +556,7 @@ class Net(nn.Module):
                     self.biases[layer].data += lr * self.nudges[layer].squeeze()
                 lower_layer = layer
     
-    def train_dend(self, description, targets, lr):
+    def train_dend(self, description, targets):
         '''
         Wrapper function for training models with dendritic learning rules
         - Dendritic Temporal Contrast
@@ -568,13 +574,13 @@ class Net(nn.Module):
         self.eval()
         if 'dend_temp_contrast' in description:
             self.backward_dend_temp_contrast(targets)
-            self.step_dend_temp_contrast(lr)
+            self.step_dend_temp_contrast()
         elif 'oja' in description:
             self.backward_ojas(targets)
-            self.step_ojas(lr)
+            self.step_ojas()
         elif 'dend_EI_contrast' in description:
             self.backward_dend_EI_contrast(targets)
-            self.step_dend_EI_contrast(lr)
+            self.step_dend_EI_contrast()
     
     def test_model(self, test_loader, verbose=True, device='cpu'):
         '''
@@ -872,7 +878,6 @@ def generate_data(K=4, sigma=0.16, N=2000, seed=None, gen=None, display=True):
 
     train_data = TensorDataset(X_train, y_train)
     train_loader = DataLoader(train_data, batch_size=batch_size, drop_last=True, shuffle=True, num_workers=0, generator=gen)
-    
     return X_test, y_test, X_train, y_train, X_val, y_val, test_loader, train_loader, val_loader, fig
 
 
@@ -904,9 +909,9 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
 
     X_test, y_test, X_train, y_train, X_val, y_val, test_loader, train_loader, val_loader, data_fig = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=show_plot or save_plot)
 
-    def train_and_handle_debug(net, description, lr, criterion, train_loader, test_loader, debug, num_train_steps, num_epochs, device):
+    def train_and_handle_debug(net, description, criterion, train_loader, test_loader, extra_params, debug, num_train_steps, num_epochs, device):
         try:
-            net.train_model(description, lr, criterion, train_loader, val_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=device)
+            net.train_model(description, criterion, train_loader, val_loader, extra_params=extra_params, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=device)
         except AssertionError:
             print(f"{num_train_steps} train steps completed.")
         except Exception as e:
@@ -935,8 +940,8 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                'dend_temp_contrast_zero_bias': 0.01,#screened
                'dend_temp_contrast_fixed_bias': 0.07,#screened
                'ojas_dend_learned_bias': 0.01,#screened
-               'ojas_dend_zero_bias': 0.02, #screened
-               'ojas_dend_fixed_bias': 0.04,#screened
+               'ojas_dend_zero_bias': 0.017, #screened
+               'ojas_dend_fixed_bias': 0.017,#screened
                'dend_EI_contrast_learned_bias': 0.11,
                'dend_EI_contrast_zero_bias': 0.010,
                'dend_EI_contrast_fixed_bias': 0.07}
@@ -944,8 +949,11 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
     criterion = "MSELoss"
     num_epochs = 1
     local_torch_random.manual_seed(data_order_seed)
+    extra_params = {}
     if "ojas_dend" in description:
         mean_subtract_input = True
+        extra_params['alpha'] = 0.7
+        extra_params['beta'] = 1.5
     else:
         mean_subtract_input = False
     if "learned_bias" in description:
@@ -959,13 +967,13 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
         learn_bias = False
     
     net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=use_bias,
-                  learn_bias=learn_bias, lr=lr_dict[description], mean_subtract_input=mean_subtract_input).to(DEVICE)
+                  learn_bias=learn_bias, lr=lr_dict[description], extra_params=extra_params, mean_subtract_input=mean_subtract_input).to(DEVICE)
     
     if debug:
         net.register_hooks()
-        train_and_handle_debug(net, description, lr_dict[description], criterion, train_loader, val_loader, debug, num_train_steps, num_epochs, DEVICE)
+        train_and_handle_debug(net, description, criterion, train_loader, val_loader, debug, num_train_steps, num_epochs, DEVICE)
     else:
-        val_acc = net.train_model(description, lr_dict[description], criterion, train_loader, val_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=DEVICE)
+        val_acc = net.train_model(description, criterion, train_loader, val_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=DEVICE)
         test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
 
         plot_title = label_dict[description]
