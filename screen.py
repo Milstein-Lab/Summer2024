@@ -17,7 +17,7 @@ local_torch_random = torch.Generator()
 def objective(trial, description, base_seed):
     learning_rate = trial.suggest_float('learning_rate', start, end)
     num_seeds = 5
-    num_epochs = 1
+    num_epochs = 2
     accuracy_list = []
 
     for seed_offset in range(num_seeds):

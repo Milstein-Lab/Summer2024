@@ -1,4 +1,6 @@
 # Imports
+import pathlib
+import torch
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
@@ -137,7 +139,6 @@ class Net(nn.Module):
         - use_bias (boolean): If True, randomly initialize biases. If False, set all biases to 0.
         - learn_bias (boolean): If True, use learning rule to update biases. If False, otherwise.
         - mean_subtract_input (boolean): If True, forward method mean subtracts input before computing output
-
         Returns:
         - Nothing
         """
@@ -149,10 +150,12 @@ class Net(nn.Module):
         self.input_feature_num = input_feature_num
         self.hidden_unit_nums = hidden_unit_nums
         self.output_feature_num = output_feature_num
+        self.extra_params = extra_params
         self.description = description
         self.use_bias = use_bias
         self.learn_bias = learn_bias
         self.mean_subtract_input = mean_subtract_input
+        self.lr = lr
         self.lr = lr
 
         self.forward_soma_state = {} # states of all layers pre activation
@@ -170,10 +173,10 @@ class Net(nn.Module):
         self.backward_dend_state = {}
         self.nudges = {}
         self.backward_activity = {}
-        
-        self.recurrent_layers = {}
-        self.recurrent_weights = {}
+
         if 'dend_EI_contrast' in self.description:
+            self.recurrent_layers = {}
+            self.recurrent_weights = {}
             for i, num in enumerate(self.hidden_unit_nums):
                 layer = f'H{i+1}'
                 self.recurrent_layers[layer] = nn.Linear(num, num, bias=False)
@@ -226,6 +229,7 @@ class Net(nn.Module):
 
         if 'backprop' in self.description:
             self.optimizer = optim.SGD(self.parameters(), lr=self.lr)
+            self.optimizer = optim.SGD(self.parameters(), lr=self.lr)
 
     def forward(self, x, num_samples=100, store=True, testing=True,):
         """
@@ -235,7 +239,7 @@ class Net(nn.Module):
         - x (torch.tensor): Input data
         - num_samples (int): Number of samples
         - store (boolean): If True, store intermediate states and activities of each layer
-        - testing (boolean): If True, expect full batch to be contained in x
+        - test (boolean): If True, expect full batch to be contained in x
     
         Returns:
         - x (torch.tensor): Output data
@@ -293,8 +297,6 @@ class Net(nn.Module):
         Args:
         - data_loader (torch.utils.data type): Combines the test dataset and sampler, and provides an iterable over the given dataset
         - device (string): CUDA/GPU if available, CPU otherwise
-        - store (boolean): Pass to forward() to store intermediate states and values
-        - testing (boolean): Pass to forward() to contain full batch in inputs
     
         Returns:
         - total (int): Number of datapoints in the dataloader
@@ -315,41 +317,53 @@ class Net(nn.Module):
         acc = 100 * correct / total
         return total, acc
     
-    def reinit(self):
+    def train_model(self, description, criterion, train_loader, val_loader, debug=False, num_train_steps=None, num_epochs=1, verbose=False, device='cpu'):
+        """
+        Train model with backprop, accumulate loss, evaluate performance
+    
+        Args:
+        - description (string): Description of model to train
+        - criterion (torch.nn type): Loss function
+        - train_loader (torch.utils.data type): Combines the train dataset and sampler, and provides an iterable over the given dataset
+        - val_loader (torch.utils.data type): Contains a validation dataset as a single batch
+        - debug (boolean): If True, enters debug mode.
+        - num_train_steps (int): Stops train loop after specified number of steps
+        - num_epochs (int): Number of epochs [default: 1]
+        - verbose (boolean): If True, print statistics
+        - device (string): CUDA/GPU if available, CPU otherwise
+    
+        Returns:
+        - train_acc (int): Accuracy of model on train data
+        """
+        self.to(device)
+        self.train()
         self.training_losses = []
-        
+        train_step = 0
         self.train_accuracy = []
-        self.train_steps = []
-        self.avg_loss = []
-        
+        self.train_steps_list = []
+
+        # Create dictionaries for train state and activities
         self.forward_soma_state_train_history = {}
         self.forward_activity_train_history = {}
-        self.backward_activity_train_history = {}
         if self.mean_subtract_input:
             self.forward_activity_mean_subtracted_train_history = {}
         self.forward_dend_state_train_history = {}
         self.backward_dend_state_train_history = {}
         self.nudges_train_history = {}
         self.weights_train_history = {}
-        self.biases_train_history = {}
-        self.recurrent_weights_train_history = {}
         self.forward_activity_train_history['Input'] = []
         if self.mean_subtract_input:
             self.forward_activity_mean_subtracted_train_history['Input'] = []
-        for key in self.layers:
+        for key, layer in self.layers.items():
             self.forward_soma_state_train_history[key] = []
             self.forward_activity_train_history[key] = []
             if self.mean_subtract_input:
                 self.forward_activity_mean_subtracted_train_history[key] = []
-            self.backward_activity_train_history[key] = []
             self.forward_dend_state_train_history[key] = []
             self.backward_dend_state_train_history[key] = []
             self.nudges_train_history[key] = []
             self.weights_train_history[key] = []
-            self.recurrent_weights_train_history[key] = []
-            if self.use_bias or self.learn_bias:
-                self.biases_train_history[key] = []
-        
+
         self.train_labels = []
         self.predicted_labels = []
     
@@ -378,36 +392,57 @@ class Net(nn.Module):
 
         for epoch in tqdm(range(num_epochs)):  # Loop over the dataset multiple times
             for i, data in enumerate(train_loader, 0):
-                # Get the inputs; data is a list of [input, label]
-                input, label = data
-                input = input.to(device).float()
-                label = label.to(device).long()
+                # Get the inputs; data is a list of [inputs, labels]
+                inputs, labels = data
+                inputs = inputs.to(device).float()
+                labels = labels.to(device).long()
 
-                self.train_labels.append(label.item())
+                self.train_labels.append(labels)
 
                 # forward pass
-                outputs = self.forward(input, num_samples=100, testing=False)                
+                outputs = self.forward(inputs, num_samples=100, testing=False)
                 _, predicted = torch.max(outputs, 1)
-                targets = torch.eye(self.output_feature_num)[label]
-
                 self.predicted_labels.append(predicted)
-
-                loss = criterion_function(outputs, targets)
-
-                # Track losses
-                self.training_losses.append(loss.item())
 
                 if train_step % 100 == 0:
                     correct = (torch.tensor(self.predicted_labels[-100:]) == torch.tensor(self.train_labels[-100:])).sum().item()
                     acc = correct
                     self.train_accuracy.append(acc)
-                    self.train_steps.append(train_step) 
-                    self.avg_loss.append(torch.mean(torch.tensor(self.training_losses[-100:])))                 
-                
+                    self.train_steps_list.append(train_step)
+
+                # Store forward state and activity info
+                self.forward_activity_train_history['Input'].append(self.forward_activity['Input'])
+                for key, layer in self.layers.items():
+                    self.forward_soma_state_train_history[key].append(self.forward_soma_state[key])
+                    self.forward_activity_train_history[key].append(self.forward_activity[key])
+                    if self.mean_subtract_input:
+                        self.forward_activity_mean_subtracted_train_history[key].append(
+                            self.forward_activity_mean_subtracted[key])
+
+                # Decide criterion function
+                criterion_function = eval(f"nn.{criterion}()")
+                if criterion == "MSELoss":
+                    targets = torch.zeros((inputs.shape[0], self.output_feature_num))
+                    for row in range(len(labels)):
+                        col = labels[row].int()
+                        targets[row][col] = 1
+                    loss = criterion_function(outputs, targets)
+                elif criterion == "CrossEntropyLoss":
+                    loss = criterion_function(outputs, labels)
+                    
                 # Choose learning rule
                 if 'backprop' in description:
                     self.train_backprop(loss)
                 elif 'dend' in description:
+                    self.train_dend(description, targets)
+
+                # store a copy of the weights in a weight_history dict
+                for key, layer in self.weights.items():
+                    self.weights_train_history[key].append(self.weights[key])
+
+                # Track losses
+                self.training_losses.append(loss.item())
+
                     self.train_dend(description, targets, self.lr)
                 
                 self.store_train_history()
@@ -417,14 +452,28 @@ class Net(nn.Module):
                 if debug and num_train_steps is not None:
                     if train_step == num_train_steps:
                         assert False
-        
-        self.stack_train_history()
+
+        # Squeeze all history tensors
+        for key, layer in self.layers.items():
+            self.forward_soma_state_train_history[key] = torch.stack(self.forward_soma_state_train_history[key]).squeeze()
+            self.forward_activity_train_history[key] = torch.stack(self.forward_activity_train_history[key]).squeeze()
+            if self.mean_subtract_input:
+                self.forward_activity_mean_subtracted_train_history[key] = torch.stack(self.forward_activity_mean_subtracted_train_history[key]).squeeze()
+            if self.forward_dend_state_train_history[key]:
+                self.forward_dend_state_train_history[key] = torch.stack(self.forward_dend_state_train_history[key]).squeeze()
+            if self.backward_dend_state_train_history[key]:
+                self.backward_dend_state_train_history[key] = torch.stack(self.backward_dend_state_train_history[key]).squeeze()
+            if self.nudges_train_history[key]:
+                self.nudges_train_history[key] = torch.stack(self.nudges_train_history[key]).squeeze()
+            if self.weights_train_history[key]:
+                self.weights_train_history[key] = torch.stack(self.weights_train_history[key]).squeeze()
+
+        self.train_labels = torch.stack(self.train_labels)
         
         self.eval()
 
         val_total, val_acc = self.test(val_loader, device, testing=True)
         self.val_acc = val_acc
-        self.final_loss = self.training_losses[-1]
 
         # Store final weights and biases
         self.final_weights = {}
@@ -457,36 +506,44 @@ class Net(nn.Module):
             if layer == 'Out':
                 self.nudges[layer] = (2.0 / self.output_feature_num) * self.ReLU_derivative(
                     self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])  # the ReLU derivative term is dA/dz
+                self.nudges_train_history[layer].append(self.nudges[layer])
             else:
                 self.forward_dend_state[layer] = self.forward_activity[prev_layer] @ self.weights[prev_layer]
                 self.backward_dend_state[layer] = self.backward_activity[prev_layer] @ self.weights[prev_layer]
                 self.nudges[layer] = self.ReLU_derivative(self.forward_soma_state[layer]) * (
                         self.backward_dend_state[layer] - self.forward_dend_state[layer])
+                self.forward_dend_state_train_history[layer].append(self.nudges[layer])
+                self.backward_dend_state_train_history[layer].append(self.backward_dend_state[layer])
+                self.nudges_train_history[layer].append(self.nudges[layer])
             
-            self.backward_activity[layer] = (
-                self.activation_functions[layer](self.forward_soma_state[layer] + self.nudges[layer]))
+            self.backward_activity[layer] = self.activation_functions[layer](self.forward_soma_state[layer] + self.nudges[layer])
             prev_layer = layer
 
     def backward_ojas(self, targets):
+        beta = self.extra_params['beta']
         prev_layer = None
         reverse_layers = list(self.layers.keys())[::-1]
         
         for layer in reverse_layers:
             if layer == 'Out':
-                self.nudges[layer] = (
-                        self.ReLU_derivative(self.forward_soma_state[layer]) * (targets - self.forward_activity['Out']))  # the ReLU derivative term is dA/dz
+                self.nudges[layer] =  self.ReLU_derivative(self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])  # the ReLU derivative term is dA/dz
+                self.nudges_train_history[layer].append(self.nudges[layer])
             else:
                 self.forward_dend_state[layer] = self.forward_activity[prev_layer] @ self.weights[prev_layer]
                 self.backward_dend_state[layer] = self.backward_activity[prev_layer] @ self.weights[prev_layer]
-                self.nudges[layer] = self.ReLU_derivative(self.forward_soma_state[layer]) * (
+                self.nudges[layer] = beta * self.ReLU_derivative(self.forward_soma_state[layer]) * (
                         self.backward_dend_state[layer] - self.forward_dend_state[layer])
+                self.forward_dend_state_train_history[layer].append(self.nudges[layer])
+                self.backward_dend_state_train_history[layer].append(self.backward_dend_state[layer])
+                self.nudges_train_history[layer].append(self.nudges[layer])
             
             self.backward_activity[layer] = self.activation_functions[layer](
                 self.forward_soma_state[layer] + self.nudges[layer])
             prev_layer = layer
     
-    def step_dend_temp_contrast(self, lr):
+    def step_dend_temp_contrast(self):
         # add beta scalars?
+        lr = self.lr
         with torch.no_grad():
             prev_layer = 'Input'
             for layer in self.layers.keys():
@@ -496,107 +553,47 @@ class Net(nn.Module):
                     self.biases[layer].data += lr * self.nudges[layer].squeeze()
                 prev_layer = layer
     
-    def step_ojas(self, lr):
+    def step_ojas(self):
+        lr = self.lr
+        # bias_lr = self.extra_params['bias_lr']
+        alpha = self.extra_params['alpha']
         with torch.no_grad():
             prev_layer = 'Input'
             for layer in self.layers.keys():
-                self.weights[layer].data += (lr * self.backward_activity[layer].T * (self.forward_activity_mean_subtracted[prev_layer] - self.backward_activity[layer].T * self.weights[layer].data))
+                self.weights[layer].data += (lr * self.backward_activity[layer].T * (self.forward_activity_mean_subtracted[prev_layer] - alpha * self.backward_activity[layer].T * self.weights[layer].data))
                 if self.use_bias and self.learn_bias:
                     self.biases[layer].data += lr * self.nudges[layer].squeeze()
                 prev_layer = layer
     
     def backward_dend_EI_contrast(self, targets):
         reverse_layers = list(self.layers.keys())[::-1]
-        
         for idx, layer in enumerate(reverse_layers):
             if layer == 'Out':
                 self.nudges[layer] = (2.0 / self.output_feature_num) * self.ReLU_derivative(
                     self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])
-                self.nudges[layer].clamp_(-1., 1.)
             else:
                 upper_layer = reverse_layers[idx - 1]
                 self.forward_dend_state[layer] = self.forward_activity[upper_layer] @ self.weights[upper_layer] + self.recurrent_layers[layer](self.forward_activity[layer])
-                self.forward_dend_state[layer].clamp_(-1., 1.)
                 self.backward_dend_state[layer] = self.backward_activity[upper_layer] @ self.weights[upper_layer] + self.recurrent_layers[layer](self.forward_activity[layer])
-                self.backward_dend_state[layer].clamp_(-1., 1.)
                 self.nudges[layer] = self.backward_dend_state[layer] * self.ReLU_derivative(self.forward_soma_state[layer])
             self.backward_activity[layer] = self.activation_functions[layer](self.forward_soma_state[layer] + self.nudges[layer])
     
-    def step_dend_EI_contrast(self, lr):
+    def step_dend_EI_contrast(self):
+        lr = self.lr
         with torch.no_grad():
             lower_layer = 'Input'
             for layer in self.layers.keys():
-                self.weights[layer].data += lr * torch.outer(self.nudges[layer].squeeze(), torch.clamp(self.forward_activity[lower_layer].squeeze(), 0., 1.))
+                self.weights[layer].data += lr * torch.outer(self.nudges[layer].squeeze(), self.forward_activity[lower_layer].squeeze())
                 if layer != 'Out':
-                    self.recurrent_weights[layer].data += -1 * lr * self.forward_dend_state[layer].T @ torch.clamp(self.forward_activity[layer], 0., 1.)
+                    self.recurrent_weights[layer].data += -1 * lr * self.forward_dend_state[layer].T @ self.forward_activity[layer]
                 if self.use_bias and self.learn_bias:
                     self.biases[layer].data += lr * self.nudges[layer].squeeze()
                 lower_layer = layer
     
-    def store_train_history(self):
-        # Store forward state and activity info
-        self.forward_activity_train_history['Input'].append(self.forward_activity['Input'])
-        for key in self.layers:
-            self.forward_soma_state_train_history[key].append(self.forward_soma_state[key])
-            self.forward_activity_train_history[key].append(self.forward_activity[key])
-            if self.mean_subtract_input:
-                self.forward_activity_mean_subtracted_train_history[key].append(
-                    self.forward_activity_mean_subtracted[key])
-                
-            # store a copy of the weights and biases
-            self.weights_train_history[key].append(self.weights[key].data.clone())
-            if self.use_bias or self.learn_bias:
-                self.biases_train_history[key].append(self.biases[key].data.clone())
-            if key in self.recurrent_weights:
-                self.recurrent_weights_train_history[key].append(self.recurrent_weights[key].data.clone())
-            
-            if key in self.nudges:
-                self.nudges_train_history[key].append(self.nudges[key])
-            if key in self.forward_dend_state:
-                self.forward_dend_state_train_history[key].append(self.forward_dend_state[key])
-            if key in self.backward_dend_state:
-                self.backward_dend_state_train_history[key].append(self.backward_dend_state[key])
-            if key in self.backward_activity:
-                self.backward_activity_train_history[key].append(self.backward_activity[key])
-    
-    def stack_train_history(self):
-        # Stack all history tensors
-        for key in self.layers:
-            self.forward_soma_state_train_history[key] = torch.stack(
-                self.forward_soma_state_train_history[key]).squeeze()
-            self.forward_activity_train_history[key] = torch.stack(self.forward_activity_train_history[key]).squeeze()
-            if self.mean_subtract_input:
-                self.forward_activity_mean_subtracted_train_history[key] = torch.stack(
-                    self.forward_activity_mean_subtracted_train_history[key]).squeeze()
-            if self.forward_dend_state_train_history[key]:
-                self.forward_dend_state_train_history[key] = torch.stack(
-                    self.forward_dend_state_train_history[key]).squeeze()
-            if self.backward_dend_state_train_history[key]:
-                self.backward_dend_state_train_history[key] = torch.stack(
-                    self.backward_dend_state_train_history[key]).squeeze()
-            if self.nudges_train_history[key]:
-                self.nudges_train_history[key] = torch.stack(self.nudges_train_history[key]).squeeze()
-            if self.backward_activity_train_history[key]:
-                self.backward_activity_train_history[key] = (
-                    torch.stack(self.backward_activity_train_history[key]).squeeze())
-            if self.weights_train_history[key]:
-                self.weights_train_history[key] = torch.stack(self.weights_train_history[key]).squeeze()
-            if self.recurrent_weights_train_history[key]:
-                self.recurrent_weights_train_history[key] = (
-                    torch.stack(self.recurrent_weights_train_history[key]).squeeze())
-            if self.use_bias and self.learn_bias:
-                if self.biases_train_history[key]:
-                    self.biases_train_history[key] = torch.stack(self.biases_train_history[key]).squeeze()
-        
-        self.train_labels = torch.tensor(self.train_labels)
-        self.training_losses = torch.tensor(self.training_losses)
-        self.train_steps = torch.tensor(self.train_steps)
-        self.train_accuracy = torch.tensor(self.train_accuracy)
-    
-    def train_dend(self, description, targets, lr):
+    def train_dend(self, description, targets):
         '''
         Wrapper function for training models with dendritic learning rules
-        - Dendritic Target Propagation Temporal Contrast
+        - Dendritic Temporal Contrast
         - Oja's Rule
         - Dendritic Excitatory-Inhibitory (EI) Contrast
 
@@ -611,13 +608,13 @@ class Net(nn.Module):
         self.eval()
         if 'dend_temp_contrast' in description:
             self.backward_dend_temp_contrast(targets)
-            self.step_dend_temp_contrast(lr)
+            self.step_dend_temp_contrast()
         elif 'oja' in description:
             self.backward_ojas(targets)
-            self.step_ojas(lr)
+            self.step_ojas()
         elif 'dend_EI_contrast' in description:
             self.backward_dend_EI_contrast(targets)
-            self.step_dend_EI_contrast(lr)
+            self.step_dend_EI_contrast()
     
     def test_model(self, test_loader, verbose=True, device='cpu'):
         '''
@@ -723,23 +720,20 @@ class Net(nn.Module):
             axes[0][i].set_xticks(range(this_class_averaged_activity.shape[0]))
             axes[0][i].set_xticklabels(range(this_class_averaged_activity.shape[0]))
 
+        axes[1][0].plot(self.train_steps_list, self.train_accuracy, label=f"Test Accuracy: {test_acc:.3f}\nVal Accuracy: {self.val_acc:.3f}")
         axes[1][0].plot(self.train_steps, self.train_accuracy, label=f"Test Accuracy: {self.test_acc:.3f}\nVal Accuracy: {self.val_acc:.3f}")
         axes[1][0].set_xlabel('Train Steps')
         axes[1][0].set_ylabel('Accuracy (%)')
         axes[1][0].legend(loc='best', frameon=False)
 
-        axes[1][1].plot(self.train_steps, self.avg_loss, label=f'Final Loss: {self.final_loss:.3f}')
-        axes[1][1].set_xlabel('Train Steps')
-        axes[1][1].set_ylabel('Loss')
-        axes[1][1].legend(loc='best', frameon=False)
-
         map = self.get_decision_map(inputs, labels, self.output_feature_num)
-        axes[1][2].imshow(map, extent=[-2, 2, -2, 2], cmap='jet', origin='lower')
-        axes[1][2].set_xlabel('x1')
-        axes[1][2].set_ylabel('x2')
-        axes[1][2].set_title('Predictions')
 
-        for j in range(3, num_layers):
+        axes[1][1].imshow(map, extent=[-2, 2, -2, 2], cmap='jet', origin='lower')
+        axes[1][1].set_xlabel('x1')
+        axes[1][1].set_ylabel('x2')
+        axes[1][1].set_title('Predictions')
+
+        for j in range(2,num_layers):
             axes[1][j].axis('off')
 
         if title is not None:
