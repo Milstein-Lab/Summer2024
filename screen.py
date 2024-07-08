@@ -37,8 +37,8 @@ def objective(trial, description, base_seed):
         net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=use_bias,
                   learn_bias=learn_bias, lr=learning_rate, mean_subtract_input=mean_subtract_input).to(DEVICE)
 
-        acc = net.train_model(description, learning_rate, train_loader, val_loader, debug=False, num_epochs=num_epochs, verbose=False, device=DEVICE)
-        accuracy_list.append(acc)
+        val_acc = net.train_model(description, learning_rate, train_loader, val_loader, debug=False, num_epochs=num_epochs, verbose=False, device=DEVICE)
+        accuracy_list.append(val_acc)
 
     avg_accuracy = np.mean(accuracy_list)
     return avg_accuracy

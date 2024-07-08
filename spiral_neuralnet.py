@@ -1,7 +1,7 @@
 # Imports
-import torch
 import numpy as np
 import matplotlib.pyplot as plt
+import torch
 import torch.nn as nn
 import torch.optim as optim
 from torchvision.utils import make_grid
@@ -14,6 +14,9 @@ import random
 import pickle
 import os
 import click
+from multiprocessing import cpu_count
+from concurrent.futures import ProcessPoolExecutor
+from functools import partial
 import traceback
 import time
 
@@ -46,7 +49,6 @@ def set_seed(seed=None, seed_torch=True, verbose=False):
 
     if verbose:
         print(f'Random seed {seed} has been set.')
-
 
 # In case that `DataLoader` is used
 def seed_worker(worker_id):
@@ -85,7 +87,6 @@ def set_device(verbose=False):
 
     return device
 
-
 # Create spiral dataset
 def create_spiral_dataset(K, sigma, N):
     """
@@ -122,7 +123,7 @@ class Net(nn.Module):
     """
 
     def __init__(self, actv, input_feature_num, hidden_unit_nums, output_feature_num, lr, description=None, use_bias=True,
-                 learn_bias=True, mean_subtract_input=False):
+                 learn_bias=True, mean_subtract_input=False, seed=123):
         """
         Initialize MLP Network parameters
     
@@ -141,6 +142,9 @@ class Net(nn.Module):
         - Nothing
         """
         super(Net, self).__init__()
+
+        torch.manual_seed(seed)
+
         # Save parameters as self variables
         self.input_feature_num = input_feature_num
         self.hidden_unit_nums = hidden_unit_nums
@@ -149,6 +153,7 @@ class Net(nn.Module):
         self.use_bias = use_bias
         self.learn_bias = learn_bias
         self.mean_subtract_input = mean_subtract_input
+        self.lr = lr
 
         self.forward_soma_state = {} # states of all layers pre activation
         self.forward_activity = {} # activities of all layers post ReLU
@@ -220,7 +225,7 @@ class Net(nn.Module):
         self.mlp = nn.Sequential(*layers)
 
         if 'backprop' in self.description:
-            self.optimizer = optim.SGD(self.parameters(), lr=lr)
+            self.optimizer = optim.SGD(self.parameters(), lr=self.lr)
 
     def forward(self, x, num_samples=100, store=True, testing=True,):
         """
@@ -292,8 +297,8 @@ class Net(nn.Module):
         - testing (boolean): Pass to forward() to contain full batch in inputs
     
         Returns:
-        - acc (float): Performance of the network
         - total (int): Number of datapoints in the dataloader
+        - acc (float): Performance of the network
         """
         correct = 0
         total = 0
@@ -348,13 +353,12 @@ class Net(nn.Module):
         self.train_labels = []
         self.predicted_labels = []
     
-    def train_model(self, description, lr, train_loader, val_loader, debug=False, num_train_steps=None, num_epochs=1, verbose=False, device='cpu'):
+    def train_model(self, description, train_loader, val_loader, debug=False, num_train_steps=None, num_epochs=1, verbose=False, device='cpu'):
         """
         Train model with backprop, accumulate loss, evaluate performance
     
         Args:
         - description (string): Description of model to train
-        - lr (float): Learning rate
         - train_loader (torch.utils.data type): Combines the train dataset and sampler, and provides an iterable over the given dataset
         - val_loader (torch.utils.data type): Contains a validation dataset as a single batch
         - debug (boolean): If True, enters debug mode.
@@ -364,7 +368,7 @@ class Net(nn.Module):
         - device (string): CUDA/GPU if available, CPU otherwise
     
         Returns:
-        - train_acc (int): Accuracy of model on train data
+        - val_acc (int): Accuracy of model on validation data
         """
         self.to(device)
         self.train()
@@ -404,7 +408,7 @@ class Net(nn.Module):
                 if 'backprop' in description:
                     self.train_backprop(loss)
                 elif 'dend' in description:
-                    self.train_dend(description, targets, lr)
+                    self.train_dend(description, targets, self.lr)
                 
                 self.store_train_history()
                 
@@ -663,22 +667,24 @@ class Net(nn.Module):
 
         return decision_map.T
 
-    def display_summary(self, test_loader, test_acc, title=None, save_path=None, show_plot=False):
+    def display_summary(self, test_loader, title=None, seed=None, png_save_path=None, svg_save_path=None, show_plot=False):
         '''
         Display network summary
 
         Args:
         - test_loader (torch.utils.data type): Combines the test dataset and sampler, and provides an iterable over the given dataset
-        - test_acc (int): Accuracy of model after testing
         - title (string): Title of model based on description
-        - save_path (string): File path to save plot
+        - seed (int): network_seed used to create model
+        - png_save_path (string): File path to save plot as png
+        - svg_save_path (string): File path to save plot as svg
         - show_plot (boolean): If True, shows the plot
 
         Returns:
-        - fig (matplotlib.figure.Figure): Figure object for summary plot
+        - Nothing
         '''
 
         inputs, labels = next(iter(test_loader))
+        self.forward(inputs, store=True, testing=False)
 
         class_averaged_activity = {}
         sorted_indices_layers = {}
@@ -717,7 +723,7 @@ class Net(nn.Module):
             axes[0][i].set_xticks(range(this_class_averaged_activity.shape[0]))
             axes[0][i].set_xticklabels(range(this_class_averaged_activity.shape[0]))
 
-        axes[1][0].plot(self.train_steps, self.train_accuracy, label=f"Test Accuracy: {test_acc:.3f}\nVal Accuracy: {self.val_acc:.3f}")
+        axes[1][0].plot(self.train_steps, self.train_accuracy, label=f"Test Accuracy: {self.test_acc:.3f}\nVal Accuracy: {self.val_acc:.3f}")
         axes[1][0].set_xlabel('Train Steps')
         axes[1][0].set_ylabel('Accuracy (%)')
         axes[1][0].legend(loc='best', frameon=False)
@@ -741,26 +747,31 @@ class Net(nn.Module):
         else:
             fig.suptitle('Class Averaged Activity')
 
-        fig.tight_layout()
+        if seed is not None:
+            fig.text(0.95, 0.95, f'Seed: {seed}', ha='center', fontsize=12)
 
-        if save_path is not None:
-            fig.savefig(f'{save_path}/summary_{self.description}.png', bbox_inches='tight')
+        fig.tight_layout(rect=[0, 0, 1, 0.95]) 
+
+        if png_save_path is not None:
+            fig.savefig(f'{png_save_path}/summary_{self.description}.png', bbox_inches='tight', format='png')
+        if svg_save_path is not None:
+            fig.savefig(f'{svg_save_path}/summary_{self.description}.svg', bbox_inches='tight', format='svg')
         if show_plot:
-            plt.show()
+            fig.show()
 
-        return fig
-
-    def plot_params(self, title=None, save_path=None, show_plot=False):
+    def plot_params(self, title=None, seed=None, png_save_path=None, svg_save_path=None, show_plot=False):
         '''
         Plot initial and final weights and biases for all layers
 
         Args:
         - title (string): Title of model based on description
-        - save_path (string): File path to save plot
+        - seed (int): network_seed used to create model
+        - png_save_path (string): File path to save plot as png
+        - svg_save_path (string): File path to save plot as svg
         - show_plot (boolean): If True, shows the plot
 
         Returns:
-        - fig (matplotlib.figure.Figure): Figure object for parameters plot
+        - None
         '''
 
         num_layers = max(2, len(self.layers))
@@ -800,14 +811,18 @@ class Net(nn.Module):
             
         if title is not None:
             fig.suptitle(title)
-        fig.tight_layout()
 
-        if save_path is not None:
-            fig.savefig(f'{save_path}/parameters_{self.description}.png', bbox_inches='tight')
+        if seed is not None:
+            fig.text(0.95, 0.95, f'Seed: {seed}', ha='center', fontsize=12)
+
+        fig.tight_layout(rect=[0, 0, 1, 0.95])  
+
+        if png_save_path is not None:
+            fig.savefig(f'{png_save_path}/params_{self.description}.png', bbox_inches='tight', format='png')
+        if svg_save_path is not None:
+            fig.savefig(f'{svg_save_path}/params_{self.description}.svg', bbox_inches='tight', format='svg')
         if show_plot:
-            plt.show()
-    
-        return fig
+            fig.show()
 
 
 def sample_grid(M=500, x_max=2.0):
@@ -829,8 +844,7 @@ def sample_grid(M=500, x_max=2.0):
                       dim=-1).view(-1, 2)
     return X_all
 
-
-def generate_data(K=4, sigma=0.16, N=2000, seed=None, gen=None, display=True):
+def generate_data(K=4, sigma=0.16, N=2000, seed=None, gen=None, display=False, png_save_path=None, svg_save_path=None):
     '''
     Generate spiral dataset for training, testing, and validating a neural network
 
@@ -840,7 +854,9 @@ def generate_data(K=4, sigma=0.16, N=2000, seed=None, gen=None, display=True):
     - N (int): Number of samples in the dataset. Default is 2000
     - seed (int): Seed value for reproducibility. Default is None
     - gen (torch.Generator): Generator object for random number generation. Default is None.
-    - display (bool): Whether to display a scatter plot of the dataset. Default is True.
+    - display (bool): Whether to display a scatter plot of the dataset. Default is False.
+    - png_save_path (string): File path to save plot as png
+    - svg_save_path (string): File path to save plot as svg
 
     Returns:
     - X_test (torch.Tensor): Test input data
@@ -852,7 +868,6 @@ def generate_data(K=4, sigma=0.16, N=2000, seed=None, gen=None, display=True):
     - test_loader (torch.utils.data.DataLoader): DataLoader for test data
     - train_loader (torch.utils.data.DataLoader): DataLoader for train data
     - val_loader (torch.utils.data.DataLoader): Dataloader for validation data
-    - fig (matplotlib.figure.Figure): Figure object for train and test data plot
     '''
 
     # Set seed for reproducibility
@@ -884,7 +899,7 @@ def generate_data(K=4, sigma=0.16, N=2000, seed=None, gen=None, display=True):
     y_train = y[val_end_idx:]
 
     fig = None
-    if display:
+    if display or png_save_path is not None or svg_save_path is not None:
         fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(12, 4))
         axes[0].scatter(X[:, 0], X[:, 1], c = y, s=10)
         axes[0].set_xlabel('x1')
@@ -903,6 +918,13 @@ def generate_data(K=4, sigma=0.16, N=2000, seed=None, gen=None, display=True):
 
         fig.tight_layout()
 
+    if display:
+        fig.show()
+    if png_save_path is not None:
+        fig.savefig(f'{png_save_path}/data.png', bbox_inches='tight', format='png')
+    if svg_save_path is not None:
+        fig.savefig(f'{svg_save_path}/data.svg', bbox_inches='tight', format='svg')
+
     # Train and test DataLoaders
     if gen is None:
         gen = torch.Generator()
@@ -916,146 +938,170 @@ def generate_data(K=4, sigma=0.16, N=2000, seed=None, gen=None, display=True):
     train_data = TensorDataset(X_train, y_train)
     train_loader = DataLoader(train_data, batch_size=batch_size, drop_last=True, shuffle=True, num_workers=0, generator=gen)
     
-    return X_test, y_test, X_train, y_train, X_val, y_val, test_loader, train_loader, val_loader, fig
+    return X_test, y_test, X_train, y_train, X_val, y_val, test_loader, train_loader, val_loader
+
+def evaluate_model(base_seed, num_input_units, num_classes, description, lr, debug, num_train_steps, show_plot=False, 
+                   png_save_path=None, svg_save_path=None, test=False):
+    
+    num_epochs = 1
+    data_split_seed = 0
+    network_seed = base_seed + 1
+    data_order_seed = base_seed + 2
+    DEVICE = set_device()
+    local_torch_random = torch.Generator()
+    local_torch_random.manual_seed(data_order_seed)
+
+    _, _, _, _, _, _, test_loader, train_loader, val_loader = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=False, png_save_path=None, svg_save_path=None)
+
+    if "ojas_dend" in description:
+        mean_subtract_input = True
+    else:
+        mean_subtract_input = False
+    if "learned_bias" in description:
+        use_bias = True
+        learn_bias = True
+    elif "zero_bias" in description:
+        use_bias = False
+        learn_bias = False
+    elif "fixed_bias" in description:
+        use_bias = True
+        learn_bias = False
+    
+    net = Net(nn.ReLU, num_input_units, [128, 32], num_classes, description=description, use_bias=use_bias,
+                learn_bias=learn_bias, lr=lr, mean_subtract_input=mean_subtract_input, seed=network_seed).to(DEVICE)
+
+    if debug:
+        net.register_hooks()
+        try:
+            net.train_model(description, train_loader, val_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=DEVICE)
+        except AssertionError:
+            print(f"{num_train_steps} train steps completed.")
+        except Exception as e:
+            traceback.print_exc()
+    else:
+        net.train_model(description, train_loader, val_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=DEVICE)
+        
+    if test:    
+        net.test_model(test_loader, verbose=False, device=DEVICE)
+
+    return net, net.val_acc, net.final_loss, net.test_acc
+
+def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_input_units, num_classes, export, export_file_path, 
+                              show_plot, png_save_path, svg_save_path, label_dict, debug, num_train_steps):
+    
+    # Determine number of available cores
+    num_cores = min(cpu_count(), num_seeds)
+    
+    # Partial function with fixed parameters except seed 
+    partial_evaluate_model = partial(evaluate_model, num_input_units=num_input_units, num_classes=num_classes, 
+                                     description=description, lr=lr, num_train_steps=num_train_steps, debug=debug, 
+                                     show_plot=show_plot, png_save_path=png_save_path, svg_save_path=svg_save_path, test=True)
+
+    # List of base seeds
+    seeds = [base_seed + seed_offset * 10 for seed_offset in range(num_seeds)]
+    
+    if num_seeds > 1:
+        with ProcessPoolExecutor(max_workers=num_cores) as executor:
+            results = list(executor.map(partial_evaluate_model, seeds))
+    else:
+        # Run without multiprocessing
+        results = [partial_evaluate_model(seed) for seed in seeds]
+
+    if num_seeds > 1:
+        # Extract and average the metrics 
+        val_accuracies = [result[1] for result in results]
+        val_losses = [result[2] for result in results]
+        test_accuracies = [result[3] for result in results]
+
+        avg_val_acc = np.mean(val_accuracies)
+        avg_val_loss = np.mean(val_losses)
+        avg_test_acc = np.mean(test_accuracies)
+
+        print(f"Averaged Test Accuracy: {avg_test_acc:.3f}")
+        print(f"Averaged Validation Accuracy: {avg_val_acc:.3f}")
+        print(f"Averaged Validation Loss: {avg_val_loss:.3f}")
+
+    # Plotting
+    plot_title = label_dict[description]
+    idx = 0
+    rep_net = results[0][idx]
+
+    if show_plot:
+        seed = seeds[idx]
+        _, _, _, _, _, _, test_loader, _, _ = generate_data(K=num_classes, seed=None, gen=None, display=show_plot, png_save_path=png_save_path, svg_save_path=svg_save_path)
+        rep_net.display_summary(test_loader, title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot)
+        rep_net.plot_params(title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot) 
+            
+    if export:
+        model_dict = {description: {seed: results[i][0] for i, seed in enumerate(seeds)}}
+        print(model_dict)
+        os.makedirs(export_file_path, exist_ok=True)
+        model_file_path = os.path.join(export_file_path, f"{description}_models.pkl")
+        with open(model_file_path, "wb") as f:
+            pickle.dump(model_dict, f)
+        print(f"Network exported to {model_file_path}")
 
 
 @click.command()
 @click.option('--description', required=True, type=str, default='backprop_learned_bias')
-@click.option('--show_plot', is_flag=True) 
-@click.option('--save_plot', is_flag=True)
+@click.option('--show_plot', is_flag=True, default=False) 
+@click.option('--save_plot', is_flag=True, default=False)
 @click.option('--interactive', is_flag=True)
-@click.option('--export', is_flag=True)
+@click.option('--export', is_flag=True, default=False)
 @click.option('--export_file_path', type=click.Path(file_okay=True), default='pkl_data')
 @click.option('--seed', type=int, default=0)
 @click.option('--debug', is_flag=True)
 @click.option('--num_train_steps', type=int, default=1)
-@click.option('--test_seeds', is_flag=True)
-def main(description, show_plot, save_plot, interactive, export, export_file_path, seed, debug, num_train_steps, test_seeds):
+@click.option('--num_seeds', type=int, default=1)
+def main(description, show_plot, save_plot, interactive, export, export_file_path, seed, debug, num_train_steps, num_seeds):
+
+    base_seed = seed
+    data_split_seed = 0
+    local_torch_random = torch.Generator()
 
     label_dict = {'backprop_learned_bias': 'Backprop Learned Bias',
-                    'backprop_zero_bias': 'Backprop Zero Bias',
-                    'backprop_fixed_bias': 'Backprop Fixed Bias',
-                    'dend_temp_contrast_learned_bias': 'Dendritic Temporal Contrast Learned Bias',
-                    'dend_temp_contrast_zero_bias': 'Dendritic Temporal Contrast Zero Bias',
-                    'dend_temp_contrast_fixed_bias': 'Dendritic Temporal Contrast Fixed Bias',
-                    'ojas_dend_learned_bias': 'Oja\'s Rule Learned Bias',
-                    'ojas_dend_zero_bias': 'Oja\'s Zero Bias',
-                    'ojas_dend_fixed_bias': 'Oja\'s Fixed Bias',
-                    'dend_EI_contrast_learned_bias': 'Dendritic EI Contrast Learned Bias',
-                    'dend_EI_contrast_zero_bias': 'Dendritic EI Contrast Zero Bias',
-                    'dend_EI_contrast_fixed_bias': 'Dendritic EI Contrast Fixed Bias'}
+                  'backprop_zero_bias': 'Backprop Zero Bias',
+                  'backprop_fixed_bias': 'Backprop Fixed Bias',
+                  'dend_temp_contrast_learned_bias': 'Dendritic Temporal Contrast Learned Bias',
+                  'dend_temp_contrast_zero_bias': 'Dendritic Temporal Contrast Zero Bias',
+                  'dend_temp_contrast_fixed_bias': 'Dendritic Temporal Contrast Fixed Bias',
+                  'ojas_dend_learned_bias': 'Oja\'s Rule Learned Bias',
+                  'ojas_dend_zero_bias': 'Oja\'s Zero Bias',
+                  'ojas_dend_fixed_bias': 'Oja\'s Fixed Bias',
+                  'dend_EI_contrast_learned_bias': 'Dendritic EI Contrast Learned Bias',
+                  'dend_EI_contrast_zero_bias': 'Dendritic EI Contrast Zero Bias',
+                  'dend_EI_contrast_fixed_bias': 'Dendritic EI Contrast Fixed Bias'}
         
     lr_dict = {'backprop_learned_bias': 0.1,
-                'backprop_zero_bias': 0.01,
-                'backprop_fixed_bias': 0.06,
-                'dend_temp_contrast_learned_bias': 0.14,
-                'dend_temp_contrast_zero_bias': 0.01,
-                'dend_temp_contrast_fixed_bias': 0.07,
-                'ojas_dend_learned_bias': 0.01,
-                'ojas_dend_zero_bias': 0.02,
-                'ojas_dend_fixed_bias': 0.04,
-                'dend_EI_contrast_learned_bias': 0.101,
-                'dend_EI_contrast_zero_bias': 0.179,
-                'dend_EI_contrast_fixed_bias': 0.068}
+               'backprop_zero_bias': 0.01,
+               'backprop_fixed_bias': 0.06,
+               'dend_temp_contrast_learned_bias': 0.14,
+               'dend_temp_contrast_zero_bias': 0.01,
+               'dend_temp_contrast_fixed_bias': 0.07,
+               'ojas_dend_learned_bias': 0.01,
+               'ojas_dend_zero_bias': 0.02,
+               'ojas_dend_fixed_bias': 0.04,
+               'dend_EI_contrast_learned_bias': 0.101,
+               'dend_EI_contrast_zero_bias': 0.179,
+               'dend_EI_contrast_fixed_bias': 0.068}
     
     num_classes = 4
     if save_plot:
-        save_path = "figures"
+        png_save_path = "figures"
         svg_save_path = "svg_figures"
-        os.makedirs(save_path, exist_ok=True)
+        os.makedirs(png_save_path, exist_ok=True)
         os.makedirs(svg_save_path, exist_ok=True)
     else:
-        save_path = None
+        png_save_path = None
+        svg_save_path = None
 
-    def generate_train_test(seed, description, num_train_steps, num_epochs, debug):
-        data_split_seed = 0
-        network_seed = seed + 1
-        data_order_seed = seed + 2
-        DEVICE = set_device()
-        local_torch_random = torch.Generator()
+    lr = lr_dict[description]
 
-        X_test, y_test, X_train, y_train, X_val, y_val, test_loader, train_loader, val_loader, data_fig = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=show_plot or save_plot)
+    _, _, X_train, _, _, _, _, _, _ = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=False, png_save_path=png_save_path, svg_save_path=svg_save_path)
+    num_input_units = X_train.shape[1]
 
-        # Train and Test model
-        set_seed(network_seed)
-
-        num_epochs = 1
-        local_torch_random.manual_seed(data_order_seed)
-        if "ojas_dend" in description:
-            mean_subtract_input = True
-        else:
-            mean_subtract_input = False
-        if "learned_bias" in description:
-            use_bias = True
-            learn_bias = True
-        elif "zero_bias" in description:
-            use_bias = False
-            learn_bias = False
-        elif "fixed_bias" in description:
-            use_bias = True
-            learn_bias = False
-        
-        net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=use_bias,
-                    learn_bias=learn_bias, lr=lr_dict[description], mean_subtract_input=mean_subtract_input).to(DEVICE)
-        
-        if debug:
-            net.register_hooks()
-            try:
-                net.train_model(description, lr_dict[description], train_loader, val_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=DEVICE)
-            except AssertionError:
-                print(f"{num_train_steps} train steps completed.")
-            except Exception as e:
-                traceback.print_exc()
-        else:
-            val_acc = net.train_model(description, lr_dict[description], train_loader, val_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=DEVICE)
-            test_acc = net.test_model(test_loader, verbose=False, device=DEVICE)
-
-            plot_title = label_dict[description]
-            summary_fig = net.display_summary(test_loader, test_acc, title=plot_title, save_path=None, show_plot=False)
-            params_fig = net.plot_params(title=plot_title, save_path=None, show_plot=False)
-
-            if save_plot:
-                data_fig.savefig(f'{save_path}/data.png', bbox_inches='tight', format='png')
-                data_fig.savefig(f'{svg_save_path}/data.svg', bbox_inches='tight', format='svg')
-                summary_fig.savefig(f'{save_path}/summary_{description}.png', bbox_inches='tight', format='png')
-                summary_fig.savefig(f'{svg_save_path}/summary_{description}.svg', bbox_inches='tight', format='svg')
-                params_fig.savefig(f'{save_path}/params_{description}.png', bbox_inches='tight', format='png')
-                params_fig.savefig(f'{svg_save_path}/params_{description}.svg', bbox_inches='tight', format='svg')
-
-            if show_plot:
-                plt.figure(data_fig.number)
-                plt.figure(summary_fig.number)
-                plt.figure(params_fig.number)
-                plt.show() 
-                
-        if export:
-            os.makedirs(export_file_path, exist_ok=True)
-            model_file_path = os.path.join(export_file_path, f"{description}_model.pkl")
-            with open(model_file_path, "wb") as f:
-                pickle.dump(net, f)
-            print(f"Network exported to {model_file_path}")
-        
-        return net, val_acc, test_acc
-    
-    if test_seeds:
-        num_seeds = 5
-        val_accuracies = []
-        test_accuracies = []
-        
-        for seed_offset in range(num_seeds):
-            base_seed = seed + seed_offset * 10
-            net, val_acc, test_acc = generate_train_test(base_seed, description, num_train_steps, num_epochs=1, debug=debug)
-            val_accuracies.append(val_acc)
-            test_accuracies.append(test_acc)
-
-        avg_val_acc = np.mean(val_accuracies)
-        avg_test_acc = np.mean(test_accuracies)
-        
-        print(f"Averaged Validation Accuracy: {avg_val_acc:.3f}")
-        print(f"Averaged Test Accuracy: {avg_test_acc:.3f}")
-        
-    else:
-        generate_train_test(seed, description, num_train_steps, num_epochs=1, debug=debug)
+    eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_input_units, num_classes, export, 
+                              export_file_path, show_plot, png_save_path, svg_save_path, label_dict, debug, num_train_steps)
     
     if interactive:
         globals().update(locals())
