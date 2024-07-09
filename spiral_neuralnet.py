@@ -270,7 +270,8 @@ class Net(nn.Module):
                 else:
                     x = x - torch.mean(x, dim=0)
                     self.forward_activity_mean_subtracted[key] = x.detach().clone()
-        
+
+
         return x
 
     def save_gradients(self, key):
@@ -380,7 +381,7 @@ class Net(nn.Module):
                 self.train_labels.append(label.item())
 
                 # forward pass
-                outputs = self.forward(input, num_samples=100, testing=False)                
+                outputs = self.forward(input, num_samples=100, testing=False)
                 _, predicted = torch.max(outputs, 1)
                 targets = torch.eye(self.output_feature_num)[label]
 
@@ -411,7 +412,7 @@ class Net(nn.Module):
                 if debug and num_train_steps is not None:
                     if train_step == num_train_steps:
                         assert False
-        
+
         self.stack_train_history()
         
         self.eval()
@@ -573,28 +574,22 @@ class Net(nn.Module):
     def stack_train_history(self):
         # Stack all history tensors
         for key in self.layers:
-            self.forward_soma_state_train_history[key] = torch.stack(
-                self.forward_soma_state_train_history[key]).squeeze()
+            self.forward_soma_state_train_history[key] = torch.stack(self.forward_soma_state_train_history[key]).squeeze()
             self.forward_activity_train_history[key] = torch.stack(self.forward_activity_train_history[key]).squeeze()
             if self.mean_subtract_input:
-                self.forward_activity_mean_subtracted_train_history[key] = torch.stack(
-                    self.forward_activity_mean_subtracted_train_history[key]).squeeze()
+                self.forward_activity_mean_subtracted_train_history[key] = torch.stack(self.forward_activity_mean_subtracted_train_history[key]).squeeze()
             if self.forward_dend_state_train_history[key]:
-                self.forward_dend_state_train_history[key] = torch.stack(
-                    self.forward_dend_state_train_history[key]).squeeze()
+                self.forward_dend_state_train_history[key] = torch.stack(self.forward_dend_state_train_history[key]).squeeze()
             if self.backward_dend_state_train_history[key]:
-                self.backward_dend_state_train_history[key] = torch.stack(
-                    self.backward_dend_state_train_history[key]).squeeze()
+                self.backward_dend_state_train_history[key] = torch.stack(self.backward_dend_state_train_history[key]).squeeze()
             if self.nudges_train_history[key]:
                 self.nudges_train_history[key] = torch.stack(self.nudges_train_history[key]).squeeze()
             if self.backward_activity_train_history[key]:
-                self.backward_activity_train_history[key] = (
-                    torch.stack(self.backward_activity_train_history[key]).squeeze())
+                self.backward_activity_train_history[key] = (torch.stack(self.backward_activity_train_history[key]).squeeze())
             if self.weights_train_history[key]:
                 self.weights_train_history[key] = torch.stack(self.weights_train_history[key]).squeeze()
             if self.recurrent_weights_train_history[key]:
-                self.recurrent_weights_train_history[key] = (
-                    torch.stack(self.recurrent_weights_train_history[key]).squeeze())
+                self.recurrent_weights_train_history[key] = (torch.stack(self.recurrent_weights_train_history[key]).squeeze())
             if self.use_bias and self.learn_bias:
                 if self.biases_train_history[key]:
                     self.biases_train_history[key] = torch.stack(self.biases_train_history[key]).squeeze()
@@ -695,7 +690,7 @@ class Net(nn.Module):
         '''
 
         inputs, labels = next(iter(test_loader))
-        self.forward(inputs, store=True, testing=False)
+        self.forward(inputs, store=True, testing=True)
 
         class_averaged_activity = {}
         sorted_indices_layers = {}
@@ -999,7 +994,7 @@ def evaluate_model(base_seed, num_input_units, num_classes, description, lr, deb
         net.test_model(test_loader, verbose=False, device=DEVICE)
 
     val_acc = net.val_acc
-    final_val_loss = net.final_loss.detach().cpu().item()
+    final_val_loss = net.final_loss
     test_acc = net.test_acc
 
     return net, val_acc, final_val_loss, test_acc
@@ -1098,7 +1093,7 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                'dend_temp_contrast_fixed_bias': 0.07,
                'ojas_dend_learned_bias': 0.01,
                'ojas_dend_zero_bias': 0.02,
-               'ojas_dend_fixed_bias': 0.04,
+               'ojas_dend_fixed_bias': 0.019,
                'dend_EI_contrast_learned_bias': 0.101,
                'dend_EI_contrast_zero_bias': 0.179,
                'dend_EI_contrast_fixed_bias': 0.068}
