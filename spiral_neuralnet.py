@@ -119,7 +119,7 @@ class Net(nn.Module):
     Simulate MLP Network
     """
 
-    def __init__(self, actv, input_feature_num, hidden_unit_nums, output_feature_num, lr, extra_params=None, 
+    def __init__(self, actv, input_feature_num, hidden_unit_nums, output_feature_num, lr, extra_params=None,
                  description=None, use_bias=True, learn_bias=True, mean_subtract_input=False, seed=0):
         """
         Initialize MLP Network parameters
@@ -149,7 +149,7 @@ class Net(nn.Module):
         self.learn_bias = learn_bias
         self.mean_subtract_input = mean_subtract_input
         self.lr = lr
-        self.extra_params = {}
+        self.extra_params = extra_params
 
         self.forward_soma_state = {} # states of all layers pre activation
         self.forward_activity = {} # activities of all layers post ReLU
@@ -221,7 +221,7 @@ class Net(nn.Module):
         self.mlp = nn.Sequential(*layers)
 
         if 'backprop' in self.description:
-            self.optimizer = optim.SGD(self.parameters(), lr=lr)
+            self.optimizer = optim.SGD(self.parameters(), lr=self.lr)
 
     def forward(self, x, num_samples=100, store=True, testing=True,):
         """
@@ -1099,6 +1099,7 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                'dend_EI_contrast_learned_bias': 0.101,
                'dend_EI_contrast_zero_bias': 0.179,
                'dend_EI_contrast_fixed_bias': 0.068}
+
     
     num_classes = 4
     if save_plot:
