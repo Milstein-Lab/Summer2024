@@ -517,29 +517,32 @@ class Net(nn.Module):
     def backward_dend_EI_contrast(self, targets):
         with torch.no_grad():
             reverse_layers = list(self.layers.keys())[::-1]
+
             for idx, layer in enumerate(reverse_layers):
                 if layer == 'Out':
                     self.nudges[layer] = (2.0 / self.output_feature_num) * self.ReLU_derivative(
                         self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])
+                    self.nudges[layer].clamp_(-1., 1.)
                 else:
                     upper_layer = reverse_layers[idx - 1]
                     self.forward_dend_state[layer] = self.forward_activity[upper_layer] @ self.weights[upper_layer] + self.recurrent_layers[layer](self.forward_activity[layer])
+                    self.forward_dend_state[layer].clamp_(-1., 1.)
                     self.backward_dend_state[layer] = self.backward_activity[upper_layer] @ self.weights[upper_layer] + self.recurrent_layers[layer](self.forward_activity[layer])
+                    self.backward_dend_state[layer].clamp_(-1., 1.)
                     self.nudges[layer] = self.backward_dend_state[layer] * self.ReLU_derivative(self.forward_soma_state[layer])
                 self.backward_activity[layer] = self.activation_functions[layer](self.forward_soma_state[layer] + self.nudges[layer])
-    
+
     def step_dend_EI_contrast(self):
         with torch.no_grad():
             lr = self.lr
-            with torch.no_grad():
-                lower_layer = 'Input'
-                for layer in self.layers.keys():
-                    self.weights[layer].data += lr * torch.outer(self.nudges[layer].squeeze(), self.forward_activity[lower_layer].squeeze())
-                    if layer != 'Out':
-                        self.recurrent_weights[layer].data += -1 * lr * self.forward_dend_state[layer].T @ self.forward_activity[layer]
-                    if self.use_bias and self.learn_bias:
-                        self.biases[layer].data += lr * self.nudges[layer].squeeze()
-                    lower_layer = layer
+            lower_layer = 'Input'
+            for layer in self.layers.keys():
+                self.weights[layer].data += lr * torch.outer(self.nudges[layer].squeeze(), torch.clamp(self.forward_activity[lower_layer].squeeze(), 0., 1.))
+                if layer != 'Out':
+                    self.recurrent_weights[layer].data += -1 * lr * self.forward_dend_state[layer].T @ torch.clamp(self.forward_activity[layer], 0., 1.)
+                if self.use_bias and self.learn_bias:
+                    self.biases[layer].data += lr * self.nudges[layer].squeeze()
+                lower_layer = layer
 
     def store_train_history(self):
         # Store forward state and activity info
