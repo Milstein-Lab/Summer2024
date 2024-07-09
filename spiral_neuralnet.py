@@ -1,17 +1,12 @@
 # Imports
-import pathlib
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torchvision.utils import make_grid
-import torchvision.transforms as transforms
-from torchvision.datasets import ImageFolder
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm.auto import tqdm
-from IPython.display import display
 import random
 import pickle
 import os
@@ -146,7 +141,6 @@ class Net(nn.Module):
 
         torch.manual_seed(seed)
 
-        # Save parameters as self variables
         self.input_feature_num = input_feature_num
         self.hidden_unit_nums = hidden_unit_nums
         self.output_feature_num = output_feature_num
@@ -154,6 +148,8 @@ class Net(nn.Module):
         self.use_bias = use_bias
         self.learn_bias = learn_bias
         self.mean_subtract_input = mean_subtract_input
+        self.lr = lr
+        self.extra_params = {}
 
         self.forward_soma_state = {} # states of all layers pre activation
         self.forward_activity = {} # activities of all layers post ReLU
@@ -448,96 +444,102 @@ class Net(nn.Module):
         return output
 
     def backward_dend_temp_contrast(self, targets):
-        prev_layer = None
-        reverse_layers = list(self.layers.keys())[::-1]
-        
-        for layer in reverse_layers:
-            if layer == 'Out':
-                self.nudges[layer] = (2.0 / self.output_feature_num) * self.ReLU_derivative(
-                    self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])  # the ReLU derivative term is dA/dz
-                self.nudges_train_history[layer].append(self.nudges[layer])
-            else:
-                self.forward_dend_state[layer] = self.forward_activity[prev_layer] @ self.weights[prev_layer]
-                self.backward_dend_state[layer] = self.backward_activity[prev_layer] @ self.weights[prev_layer]
-                self.nudges[layer] = self.ReLU_derivative(self.forward_soma_state[layer]) * (
-                        self.backward_dend_state[layer] - self.forward_dend_state[layer])
-                self.forward_dend_state_train_history[layer].append(self.nudges[layer])
-                self.backward_dend_state_train_history[layer].append(self.backward_dend_state[layer])
-                self.nudges_train_history[layer].append(self.nudges[layer])
+        with torch.no_grad():
+            prev_layer = None
+            reverse_layers = list(self.layers.keys())[::-1]
             
-            self.backward_activity[layer] = self.activation_functions[layer](self.forward_soma_state[layer] + self.nudges[layer])
-            prev_layer = layer
+            for layer in reverse_layers:
+                if layer == 'Out':
+                    self.nudges[layer] = (2.0 / self.output_feature_num) * self.ReLU_derivative(
+                        self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])  # the ReLU derivative term is dA/dz
+                    self.nudges_train_history[layer].append(self.nudges[layer])
+                else:
+                    self.forward_dend_state[layer] = self.forward_activity[prev_layer] @ self.weights[prev_layer]
+                    self.backward_dend_state[layer] = self.backward_activity[prev_layer] @ self.weights[prev_layer]
+                    self.nudges[layer] = self.ReLU_derivative(self.forward_soma_state[layer]) * (
+                            self.backward_dend_state[layer] - self.forward_dend_state[layer])
+                    self.forward_dend_state_train_history[layer].append(self.nudges[layer])
+                    self.backward_dend_state_train_history[layer].append(self.backward_dend_state[layer])
+                    self.nudges_train_history[layer].append(self.nudges[layer])
+                
+                self.backward_activity[layer] = self.activation_functions[layer](self.forward_soma_state[layer] + self.nudges[layer])
+                prev_layer = layer
 
     def backward_ojas(self, targets):
-        beta = self.extra_params['beta']
-        prev_layer = None
-        reverse_layers = list(self.layers.keys())[::-1]
-        
-        for layer in reverse_layers:
-            if layer == 'Out':
-                self.nudges[layer] =  self.ReLU_derivative(self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])  # the ReLU derivative term is dA/dz
-                self.nudges_train_history[layer].append(self.nudges[layer])
-            else:
-                self.forward_dend_state[layer] = self.forward_activity[prev_layer] @ self.weights[prev_layer]
-                self.backward_dend_state[layer] = self.backward_activity[prev_layer] @ self.weights[prev_layer]
-                self.nudges[layer] = beta * self.ReLU_derivative(self.forward_soma_state[layer]) * (
-                        self.backward_dend_state[layer] - self.forward_dend_state[layer])
-                self.forward_dend_state_train_history[layer].append(self.nudges[layer])
-                self.backward_dend_state_train_history[layer].append(self.backward_dend_state[layer])
-                self.nudges_train_history[layer].append(self.nudges[layer])
+        with torch.no_grad():
+            beta = self.extra_params['beta']
+            prev_layer = None
+            reverse_layers = list(self.layers.keys())[::-1]
             
-            self.backward_activity[layer] = self.activation_functions[layer](
-                self.forward_soma_state[layer] + self.nudges[layer])
-            prev_layer = layer
+            for layer in reverse_layers:
+                if layer == 'Out':
+                    self.nudges[layer] =  self.ReLU_derivative(self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])  # the ReLU derivative term is dA/dz
+                    self.nudges_train_history[layer].append(self.nudges[layer])
+                else:
+                    self.forward_dend_state[layer] = self.forward_activity[prev_layer] @ self.weights[prev_layer]
+                    self.backward_dend_state[layer] = self.backward_activity[prev_layer] @ self.weights[prev_layer]
+                    self.nudges[layer] = beta * self.ReLU_derivative(self.forward_soma_state[layer]) * (
+                            self.backward_dend_state[layer] - self.forward_dend_state[layer])
+                    self.forward_dend_state_train_history[layer].append(self.nudges[layer])
+                    self.backward_dend_state_train_history[layer].append(self.backward_dend_state[layer])
+                    self.nudges_train_history[layer].append(self.nudges[layer])
+                
+                self.backward_activity[layer] = self.activation_functions[layer](
+                    self.forward_soma_state[layer] + self.nudges[layer])
+                prev_layer = layer
     
     def step_dend_temp_contrast(self):
         # add beta scalars?
-        lr = self.lr
         with torch.no_grad():
-            prev_layer = 'Input'
-            for layer in self.layers.keys():
-                self.weights[layer].data += lr * torch.outer(self.nudges[layer].squeeze(),
-                                                             self.forward_activity[prev_layer].squeeze())
-                if self.use_bias and self.learn_bias:
-                    self.biases[layer].data += lr * self.nudges[layer].squeeze()
-                prev_layer = layer
+            lr = self.lr
+            with torch.no_grad():
+                prev_layer = 'Input'
+                for layer in self.layers.keys():
+                    self.weights[layer].data += lr * torch.outer(self.nudges[layer].squeeze(),
+                                                                self.forward_activity[prev_layer].squeeze())
+                    if self.use_bias and self.learn_bias:
+                        self.biases[layer].data += lr * self.nudges[layer].squeeze()
+                    prev_layer = layer
     
     def step_ojas(self):
-        lr = self.lr
-        # bias_lr = self.extra_params['bias_lr']
-        alpha = self.extra_params['alpha']
         with torch.no_grad():
-            prev_layer = 'Input'
-            for layer in self.layers.keys():
-                self.weights[layer].data += (lr * self.backward_activity[layer].T * (self.forward_activity_mean_subtracted[prev_layer] - alpha * self.backward_activity[layer].T * self.weights[layer].data))
-                if self.use_bias and self.learn_bias:
-                    self.biases[layer].data += lr * self.nudges[layer].squeeze()
-                prev_layer = layer
+            lr = self.lr
+            # bias_lr = self.extra_params['bias_lr']
+            alpha = self.extra_params['alpha']
+            with torch.no_grad():
+                prev_layer = 'Input'
+                for layer in self.layers.keys():
+                    self.weights[layer].data += (lr * self.backward_activity[layer].T * (self.forward_activity_mean_subtracted[prev_layer] - alpha * self.backward_activity[layer].T * self.weights[layer].data))
+                    if self.use_bias and self.learn_bias:
+                        self.biases[layer].data += lr * self.nudges[layer].squeeze()
+                    prev_layer = layer
     
     def backward_dend_EI_contrast(self, targets):
-        reverse_layers = list(self.layers.keys())[::-1]
-        for idx, layer in enumerate(reverse_layers):
-            if layer == 'Out':
-                self.nudges[layer] = (2.0 / self.output_feature_num) * self.ReLU_derivative(
-                    self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])
-            else:
-                upper_layer = reverse_layers[idx - 1]
-                self.forward_dend_state[layer] = self.forward_activity[upper_layer] @ self.weights[upper_layer] + self.recurrent_layers[layer](self.forward_activity[layer])
-                self.backward_dend_state[layer] = self.backward_activity[upper_layer] @ self.weights[upper_layer] + self.recurrent_layers[layer](self.forward_activity[layer])
-                self.nudges[layer] = self.backward_dend_state[layer] * self.ReLU_derivative(self.forward_soma_state[layer])
-            self.backward_activity[layer] = self.activation_functions[layer](self.forward_soma_state[layer] + self.nudges[layer])
+        with torch.no_grad():
+            reverse_layers = list(self.layers.keys())[::-1]
+            for idx, layer in enumerate(reverse_layers):
+                if layer == 'Out':
+                    self.nudges[layer] = (2.0 / self.output_feature_num) * self.ReLU_derivative(
+                        self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])
+                else:
+                    upper_layer = reverse_layers[idx - 1]
+                    self.forward_dend_state[layer] = self.forward_activity[upper_layer] @ self.weights[upper_layer] + self.recurrent_layers[layer](self.forward_activity[layer])
+                    self.backward_dend_state[layer] = self.backward_activity[upper_layer] @ self.weights[upper_layer] + self.recurrent_layers[layer](self.forward_activity[layer])
+                    self.nudges[layer] = self.backward_dend_state[layer] * self.ReLU_derivative(self.forward_soma_state[layer])
+                self.backward_activity[layer] = self.activation_functions[layer](self.forward_soma_state[layer] + self.nudges[layer])
     
     def step_dend_EI_contrast(self):
-        lr = self.lr
         with torch.no_grad():
-            lower_layer = 'Input'
-            for layer in self.layers.keys():
-                self.weights[layer].data += lr * torch.outer(self.nudges[layer].squeeze(), self.forward_activity[lower_layer].squeeze())
-                if layer != 'Out':
-                    self.recurrent_weights[layer].data += -1 * lr * self.forward_dend_state[layer].T @ self.forward_activity[layer]
-                if self.use_bias and self.learn_bias:
-                    self.biases[layer].data += lr * self.nudges[layer].squeeze()
-                lower_layer = layer
+            lr = self.lr
+            with torch.no_grad():
+                lower_layer = 'Input'
+                for layer in self.layers.keys():
+                    self.weights[layer].data += lr * torch.outer(self.nudges[layer].squeeze(), self.forward_activity[lower_layer].squeeze())
+                    if layer != 'Out':
+                        self.recurrent_weights[layer].data += -1 * lr * self.forward_dend_state[layer].T @ self.forward_activity[layer]
+                    if self.use_bias and self.learn_bias:
+                        self.biases[layer].data += lr * self.nudges[layer].squeeze()
+                    lower_layer = layer
 
     def store_train_history(self):
         # Store forward state and activity info
@@ -993,7 +995,11 @@ def evaluate_model(base_seed, num_input_units, num_classes, description, lr, deb
     if test:    
         net.test_model(test_loader, verbose=False, device=DEVICE)
 
-    return net, net.val_acc, net.final_loss, net.test_acc
+    val_acc = net.val_acc
+    final_val_loss = net.final_loss.detach().cpu().item()
+    test_acc = net.test_acc
+
+    return net, val_acc, final_val_loss, test_acc
 
 def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_input_units, num_classes, export, export_file_path, 
                               show_plot, png_save_path, svg_save_path, label_dict, debug, num_train_steps):
