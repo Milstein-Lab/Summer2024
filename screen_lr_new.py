@@ -17,7 +17,7 @@ local_torch_random = torch.Generator()
 def objective(trial, description, base_seed):
     learning_rate = trial.suggest_float('learning_rate', start, end)
     num_seeds = 5
-    num_epochs = 2
+    num_epochs = 1
     accuracy_list = []
 
     for seed_offset in range(num_seeds):
@@ -27,17 +27,18 @@ def objective(trial, description, base_seed):
 
         spiral.set_seed(data_split_seed)
         local_torch_random.manual_seed(data_order_seed)
-        _, _, X_train, _, _, _, _, train_loader, val_loader, _ = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=False)
+        _, _, X_train, _, _, _, test_loader, train_loader, val_loader = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=False, png_save_path=None, svg_save_path=None)
+        num_input_units = X_train.shape[1]
 
         mean_subtract_input = "ojas_dend" in description
         use_bias = "learned_bias" in description or "fixed_bias" in description
         learn_bias = "learned_bias" in description
         use_bias = use_bias and not "zero_bias" in description
 
-        net = Net(nn.ReLU, X_train.shape[1], [128, 32], num_classes, description=description, use_bias=use_bias,
-                  learn_bias=learn_bias, lr=learning_rate, mean_subtract_input=mean_subtract_input).to(DEVICE)
+        net = Net(nn.ReLU, num_input_units, [128, 32], num_classes, description=description, use_bias=use_bias, learn_bias=learn_bias, 
+              lr=learning_rate, extra_params=None, mean_subtract_input=mean_subtract_input, seed=network_seed).to(DEVICE)
 
-        val_acc = net.train_model(description, learning_rate, train_loader, val_loader, debug=False, num_epochs=num_epochs, verbose=False, device=DEVICE)
+        val_acc = net.train_model(description, train_loader, val_loader, debug=False, num_train_steps=None, num_epochs=num_epochs, device=DEVICE)
         accuracy_list.append(val_acc)
 
     avg_accuracy = np.mean(accuracy_list)

@@ -5,8 +5,10 @@ import torch
 import matplotlib.pyplot as plt
 import os
 
+# No longer works with changes made to how models are pickled
+
 def main():
-    seed = 2021
+    seed = 0
     data_split_seed = seed
     network_seed = seed + 1
     data_order_seed = seed + 2
