@@ -646,7 +646,7 @@ class Net(nn.Module):
         self.test_acc = test_acc
         return test_acc
     
-    def get_decision_map(self, X_test, y_test, K, DEVICE='cpu', M=500, eps=1e-3):
+    def get_decision_map(self, DEVICE='cpu', M=500):
         """
         Helper function to plot decision map
     
@@ -660,18 +660,13 @@ class Net(nn.Module):
         Returns:
         - decision_map.T (torch.Tensor): Decision map transpose to use in graph
         """
-        X_all = sample_grid()
+        X_all = sample_grid(M)
         y_pred = self.forward(X_all.to(DEVICE), store=False).cpu()
 
         decision_map = torch.argmax(y_pred, dim=1)
-
-        for i in range(len(X_test)):
-            indices = (X_all[:, 0] - X_test[i, 0])**2 + (X_all[:, 1] - X_test[i, 1])**2 < eps
-            decision_map[indices] = (K + y_test[i]).long()
-
         decision_map = decision_map.view(M, M)
-
         return decision_map.T
+    
 
     def display_summary(self, test_loader, title=None, seed=None, png_save_path=None, svg_save_path=None, show_plot=False):
         '''
@@ -739,8 +734,9 @@ class Net(nn.Module):
         axes[1][1].set_ylabel('Loss')
         axes[1][1].legend(loc='best', frameon=False)
 
-        map = self.get_decision_map(inputs, labels, self.output_feature_num)
-        axes[1][2].imshow(map, extent=[-2, 2, -2, 2], cmap='jet', origin='lower')
+        map = self.get_decision_map()
+        axes[1][2].imshow(map, extent=[-2, 2, -2, 2], origin='lower', cmap='coolwarm', alpha=1)
+        axes[1][2].scatter(inputs[:,0], inputs[:,1], c=labels, s=4)
         axes[1][2].set_xlabel('x1')
         axes[1][2].set_ylabel('x2')
         axes[1][2].set_title('Predictions')
@@ -831,7 +827,7 @@ class Net(nn.Module):
             fig.show()
 
 
-def sample_grid(M=500, x_max=2.0):
+def sample_grid(M, x_max=2.0):
     """
     Helper function to simulate sample meshgrid
   
@@ -907,7 +903,7 @@ def generate_data(K=4, sigma=0.16, N=2000, seed=None, gen=None, display=False, p
     fig = None
     if display or png_save_path is not None or svg_save_path is not None:
         fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(12, 4))
-        axes[0].scatter(X[:, 0], X[:, 1], c = y, s=10)
+        axes[0].scatter(X_train[:, 0], X_train[:, 1], c = y_train, s=10)
         axes[0].set_xlabel('x1')
         axes[0].set_ylabel('x2')
         axes[0].set_title('Train Data')
