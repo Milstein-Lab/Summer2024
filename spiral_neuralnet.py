@@ -999,7 +999,7 @@ def evaluate_model(base_seed, num_input_units, num_classes, description, lr, deb
         net.test_model(test_loader, verbose=False, device=DEVICE)
 
     val_acc = net.val_acc
-    final_val_loss = net.final_loss.detach().cpu().item()
+    final_val_loss = net.final_loss
     test_acc = net.test_acc
 
     return net, val_acc, final_val_loss, test_acc
