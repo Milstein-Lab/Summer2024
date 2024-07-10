@@ -942,8 +942,7 @@ def generate_data(K=4, sigma=0.16, N=2000, seed=None, gen=None, display=False, p
     
     return X_test, y_test, X_train, y_train, X_val, y_val, test_loader, train_loader, val_loader
 
-def evaluate_model(base_seed, num_input_units, num_classes, description, lr, debug, num_train_steps, show_plot=False, 
-                   png_save_path=None, svg_save_path=None, test=False):
+def evaluate_model(base_seed, num_input_units, num_classes, description, lr, debug, num_train_steps, test=False):
     
     num_epochs = 1
     data_split_seed = 0
@@ -996,15 +995,14 @@ def evaluate_model(base_seed, num_input_units, num_classes, description, lr, deb
     return net, val_acc, final_val_loss, test_acc
 
 def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_input_units, num_classes, export, export_file_path, 
-                              show_plot, png_save_path, svg_save_path, label_dict, debug, num_train_steps):
+                              show_plot, save_plot, png_save_path, svg_save_path, label_dict, debug, num_train_steps):
     
     # Determine number of available cores
     num_cores = min(cpu_count(), num_seeds)
     
     # Partial function with fixed parameters except seed 
     partial_evaluate_model = partial(evaluate_model, num_input_units=num_input_units, num_classes=num_classes, 
-                                     description=description, lr=lr, num_train_steps=num_train_steps, debug=debug, 
-                                     show_plot=show_plot, png_save_path=png_save_path, svg_save_path=svg_save_path, test=True)
+                                     description=description, lr=lr, num_train_steps=num_train_steps, debug=debug, test=True)
 
     # List of base seeds
     seeds = [base_seed + seed_offset * 10 for seed_offset in range(num_seeds)]
@@ -1035,7 +1033,7 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_input_u
     idx = 0
     rep_net = results[0][idx]
 
-    if show_plot:
+    if show_plot or save_plot:
         seed = seeds[idx]
         _, _, _, _, _, _, test_loader, _, _ = generate_data(K=num_classes, seed=None, gen=None, display=show_plot, png_save_path=png_save_path, svg_save_path=svg_save_path)
         rep_net.display_summary(test_loader, title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot)
@@ -1043,7 +1041,6 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_input_u
             
     if export:
         model_dict = {description: {seed: results[i][0] for i, seed in enumerate(seeds)}}
-        print(model_dict)
         os.makedirs(export_file_path, exist_ok=True)
         model_file_path = os.path.join(export_file_path, f"{description}_models.pkl")
         with open(model_file_path, "wb") as f:
@@ -1110,8 +1107,8 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
     _, _, X_train, _, _, _, _, _, _ = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=False, png_save_path=png_save_path, svg_save_path=svg_save_path)
     num_input_units = X_train.shape[1]
 
-    eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_input_units, num_classes, export, 
-                              export_file_path, show_plot, png_save_path, svg_save_path, label_dict, debug, num_train_steps)
+    eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_input_units, num_classes, export, export_file_path, 
+                              show_plot, save_plot, png_save_path, svg_save_path, label_dict, debug, num_train_steps)
     
     if interactive:
         globals().update(locals())
