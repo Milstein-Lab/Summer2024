@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from tqdm.auto import tqdm
 import random
 import pickle
+import sys
 import os
 import click
 from multiprocessing import cpu_count
@@ -301,8 +302,9 @@ class Net(nn.Module):
             inputs, labels = data
             inputs = inputs.to(device).float()
             labels = labels.to(device).long()
-
-            outputs = self.forward(inputs, store=True, testing=True)
+            if store:
+                self.test_labels = labels
+            outputs = self.forward(inputs, store=store, testing=True)
             _, predicted = torch.max(outputs, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
@@ -668,12 +670,11 @@ class Net(nn.Module):
         return decision_map.T
     
 
-    def display_summary(self, test_loader, title=None, seed=None, png_save_path=None, svg_save_path=None, show_plot=False):
+    def display_summary(self, title=None, seed=None, png_save_path=None, svg_save_path=None, show_plot=False):
         '''
         Display network summary
 
         Args:
-        - test_loader (torch.utils.data type): Combines the test dataset and sampler, and provides an iterable over the given dataset
         - title (string): Title of model based on description
         - seed (int): network_seed used to create model
         - png_save_path (string): File path to save plot as png
@@ -683,10 +684,10 @@ class Net(nn.Module):
         Returns:
         - Nothing
         '''
-
-        inputs, labels = next(iter(test_loader))
-        self.forward(inputs, store=True, testing=True)
-
+        
+        inputs = self.forward_activity['Input']
+        labels = self.test_labels
+        
         class_averaged_activity = {}
         sorted_indices_layers = {}
         for key, activity in self.forward_activity.items():
@@ -735,7 +736,7 @@ class Net(nn.Module):
         axes[1][1].legend(loc='best', frameon=False)
 
         map = self.get_decision_map()
-        axes[1][2].imshow(map, extent=[-2, 2, -2, 2], origin='lower', cmap='coolwarm', alpha=1)
+        axes[1][2].imshow(map, extent=[-2, 2, -2, 2], origin='lower', cmap='coolwarm', alpha=0.7)
         axes[1][2].scatter(inputs[:,0], inputs[:,1], c=labels, s=4)
         axes[1][2].set_xlabel('x1')
         axes[1][2].set_ylabel('x2')
@@ -942,7 +943,8 @@ def generate_data(K=4, sigma=0.16, N=2000, seed=None, gen=None, display=False, p
     
     return X_test, y_test, X_train, y_train, X_val, y_val, test_loader, train_loader, val_loader
 
-def evaluate_model(base_seed, num_input_units, num_classes, description, lr, debug, num_train_steps, test=False):
+def evaluate_model(base_seed, num_input_units, num_classes, description, lr, debug, num_train_steps, show_plot=False, 
+                   png_save_path=None, svg_save_path=None, test=False, plot_example_seed=None, extra_params=None):
     
     num_epochs = 1
     data_split_seed = 0
@@ -951,14 +953,18 @@ def evaluate_model(base_seed, num_input_units, num_classes, description, lr, deb
     DEVICE = set_device()
     local_torch_random = torch.Generator()
     local_torch_random.manual_seed(data_order_seed)
-
-    _, _, _, _, _, _, test_loader, train_loader, val_loader = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=False, png_save_path=None, svg_save_path=None)
-
-    extra_params = {}
+    
+    if base_seed != plot_example_seed:
+        show_plot = False
+        png_save_path = None
+        svg_save_path = None
+        
+    _, _, _, _, _, _, test_loader, train_loader, val_loader = (
+        generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=show_plot,
+                      png_save_path=png_save_path, svg_save_path=svg_save_path))
+    
     if "ojas_dend" in description:
         mean_subtract_input = True
-        extra_params['alpha'] = 0.7
-        extra_params['beta'] = 1.5
     else:
         mean_subtract_input = False
     if "learned_bias" in description:
@@ -971,19 +977,22 @@ def evaluate_model(base_seed, num_input_units, num_classes, description, lr, deb
         use_bias = True
         learn_bias = False
     
-    net = Net(nn.ReLU, num_input_units, [128, 32], num_classes, description=description, use_bias=use_bias, learn_bias=learn_bias, 
-              lr=lr, extra_params=extra_params, mean_subtract_input=mean_subtract_input, seed=network_seed).to(DEVICE)
+    net = Net(nn.ReLU, num_input_units, [128, 32], num_classes, description=description,
+              use_bias=use_bias, learn_bias=learn_bias, lr=lr, extra_params=extra_params,
+              mean_subtract_input=mean_subtract_input, seed=network_seed).to(DEVICE)
 
     if debug:
         net.register_hooks()
         try:
-            net.train_model(description, train_loader, val_loader, extra_params=extra_params, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=DEVICE)
+            net.train_model(description, train_loader, val_loader, debug=debug, num_train_steps=num_train_steps,
+                        num_epochs=num_epochs, device=DEVICE)
         except AssertionError:
             print(f"{num_train_steps} train steps completed.")
         except Exception as e:
             traceback.print_exc()
     else:
-        net.train_model(description, train_loader, val_loader, debug=debug, num_train_steps=num_train_steps, num_epochs=num_epochs, device=DEVICE)
+        net.train_model(description, train_loader, val_loader, debug=debug, num_train_steps=num_train_steps,
+                        num_epochs=num_epochs, device=DEVICE)
         
     if test:    
         net.test_model(test_loader, verbose=False, device=DEVICE)
@@ -991,18 +1000,27 @@ def evaluate_model(base_seed, num_input_units, num_classes, description, lr, deb
     val_acc = net.val_acc
     final_val_loss = net.final_loss
     test_acc = net.test_acc
-
+    
     return net, val_acc, final_val_loss, test_acc
 
-def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_input_units, num_classes, export, export_file_path, 
-                              show_plot, save_plot, png_save_path, svg_save_path, label_dict, debug, num_train_steps):
+def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_input_units, num_classes, export,
+                              export_file_path, show_plot, png_save_path, svg_save_path, label_dict, debug,
+                              num_train_steps, test=True, extra_params=None):
+    
     
     # Determine number of available cores
     num_cores = min(cpu_count(), num_seeds)
     
+    if show_plot and num_cores > 1:
+        example_show_plot = False
+    else:
+        example_show_plot = True
+
     # Partial function with fixed parameters except seed 
     partial_evaluate_model = partial(evaluate_model, num_input_units=num_input_units, num_classes=num_classes, 
-                                     description=description, lr=lr, num_train_steps=num_train_steps, debug=debug, test=True)
+                                     description=description, lr=lr, num_train_steps=num_train_steps, debug=debug, 
+                                     show_plot=example_show_plot, png_save_path=png_save_path, svg_save_path=svg_save_path,
+                                     test=test, plot_example_seed=base_seed, extra_params=extra_params)
 
     # List of base seeds
     seeds = [base_seed + seed_offset * 10 for seed_offset in range(num_seeds)]
@@ -1013,7 +1031,7 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_input_u
     else:
         # Run without multiprocessing
         results = [partial_evaluate_model(seed) for seed in seeds]
-
+    
     if num_seeds > 1:
         # Extract and average the metrics 
         val_accuracies = [result[1] for result in results]
@@ -1027,16 +1045,16 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_input_u
         print(f"Averaged Test Accuracy: {avg_test_acc:.3f}")
         print(f"Averaged Validation Accuracy: {avg_val_acc:.3f}")
         print(f"Averaged Validation Loss: {avg_val_loss:.3f}")
-
+        sys.stdout.flush()
+    
     # Plotting
     plot_title = label_dict[description]
     idx = 0
     rep_net = results[0][idx]
-
-    if show_plot or save_plot:
+    
+    if show_plot and test:
         seed = seeds[idx]
-        _, _, _, _, _, _, test_loader, _, _ = generate_data(K=num_classes, seed=None, gen=None, display=show_plot, png_save_path=png_save_path, svg_save_path=svg_save_path)
-        rep_net.display_summary(test_loader, title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot)
+        rep_net.display_summary(title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot)
         rep_net.plot_params(title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot) 
             
     if export:
@@ -1046,6 +1064,11 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_input_u
         with open(model_file_path, "wb") as f:
             pickle.dump(model_dict, f)
         print(f"Network exported to {model_file_path}")
+        
+    if num_seeds > 1:
+        return val_accuracies
+    else:
+        return results[0][1]
 
 
 @click.command()
@@ -1090,8 +1113,12 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                'dend_EI_contrast_learned_bias': 0.101,
                'dend_EI_contrast_zero_bias': 0.179,
                'dend_EI_contrast_fixed_bias': 0.068}
+      
+    extra_params = {}
+    if "ojas_dend" in description:
+        extra_params['alpha'] = 0.7
+        extra_params['beta'] = 1.5
 
-    
     num_classes = 4
     if save_plot:
         png_save_path = "figures"
@@ -1104,11 +1131,13 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
 
     lr = lr_dict[description]
 
-    _, _, X_train, _, _, _, _, _, _ = generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=False, png_save_path=png_save_path, svg_save_path=svg_save_path)
-    num_input_units = X_train.shape[1]
-
-    eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_input_units, num_classes, export, export_file_path, 
-                              show_plot, save_plot, png_save_path, svg_save_path, label_dict, debug, num_train_steps)
+    num_input_units = 2 
+    
+    
+    mean_val_accuracy = eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_input_units, num_classes,
+                                                  export, export_file_path, show_plot, png_save_path, svg_save_path,
+                                                  label_dict, debug, num_train_steps, test=True,
+                                                  extra_params=extra_params)
     
     if interactive:
         globals().update(locals())

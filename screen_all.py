@@ -59,7 +59,7 @@ config = {
 base_seed = 0
 
 study = optuna.create_study(direction="maximize")
-study.optimize(lambda trial: objective(trial, config, base_seed), n_trials=20)
+study.optimize(lambda trial: objective(trial, config, base_seed), n_trials=2)
 
 print("Best trial:")
 trial = study.best_trial
