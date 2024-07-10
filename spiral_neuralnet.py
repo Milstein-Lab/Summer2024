@@ -958,8 +958,12 @@ def evaluate_model(base_seed, num_input_units, num_classes, description, lr, deb
     extra_params = {}
     if "ojas_dend" in description:
         mean_subtract_input = True
-        extra_params['alpha'] = 0.7
-        extra_params['beta'] = 1.5
+        if "fixed_bias" in description:
+            extra_params['alpha'] = 0.6822
+            extra_params['beta'] = 1.895
+        if "zero_bias" in description:
+            extra_params['alpha'] = 0.6427
+            extra_params['beta'] = 1.2165
     else:
         mean_subtract_input = False
     if "learned_bias" in description:
