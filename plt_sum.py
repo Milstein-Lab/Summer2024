@@ -66,7 +66,7 @@ def plot_averaged_results(description, export_file_path):
 
     plt.title(f'Averaged Results for {description}')
     plt.tight_layout()
-    plt.show()
+    plt.show(block=False)
 
     # Losses
     all_train_losses = [results[seed].avg_loss for seed in results]
@@ -113,7 +113,7 @@ def plot_averaged_results(description, export_file_path):
     plt.legend(loc='best', frameon=False)
 
     plt.tight_layout()
-    plt.show()
+    plt.show(block=False)
 def plot_example_seed(description, example_seed, export_file_path):
     model_dict = load_models(description, export_file_path)
     if model_dict is None:
