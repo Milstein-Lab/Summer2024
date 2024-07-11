@@ -65,6 +65,50 @@ def plot_averaged_results(description, export_file_path):
     plt.tight_layout()
     plt.show()
 
+# Losses
+    all_train_losses = [results[seed].avg_loss for seed in results]
+    train_steps_list = results[next(iter(results))].train_steps_list  # Assuming all have the same train steps
+
+# Average losses and standard deviations
+    average_train_losses = np.mean(all_train_losses, axis=0)
+    std_train_losses = np.std(all_train_losses, axis=0)
+
+    # Plotting Accuracies
+    plt.figure(figsize=(10, 6))
+    plt.subplot(2, 1, 1)
+    plt.plot(train_steps_list, average_train_accuracies, '-', label="Averaged Train Accuracy")
+    plt.fill_between(train_steps_list, average_train_accuracies - std_train_accuracies, average_train_accuracies + std_train_accuracies, alpha=0.2)
+
+    # Colors
+    seed_colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray', 'tab:olive', 'tab:cyan']
+    for idx, (seed, result) in enumerate(results.items()):
+        color = seed_colors[idx % len(seed_colors)]
+        plt.plot(train_steps_list, result.train_accuracy, 'o', color=color, label=f'Seed {seed}', markersize=2)
+
+    plt.annotate(f"Avg Val Acc: {average_val_acc:.2f}%", xy=(0.95, 0.9), xycoords='axes fraction', color='blue')
+    plt.annotate(f"Avg Test Acc: {average_test_acc:.2f}%", xy=(0.95, 0.85), xycoords='axes fraction', color='orange')
+
+    plt.xlabel('Train Steps')
+    plt.ylabel('Accuracy (%)')
+    plt.legend(loc='best', frameon=False)
+    plt.title(f'Averaged Results for {description}')
+
+    # Plotting Losses
+    plt.subplot(2, 1, 2)
+    plt.plot(train_steps_list, average_train_losses, '-', label="Averaged Train Loss")
+    plt.fill_between(train_steps_list, average_train_losses - std_train_losses, average_train_losses + std_train_losses, alpha=0.2)
+
+    for idx, (seed, result) in enumerate(results.items()):
+        color = seed_colors[idx % len(seed_colors)]
+        plt.plot(train_steps_list, result.avg_loss, 'o', color=color, label=f'Seed {seed}', markersize=2)
+
+    plt.xlabel('Train Steps')
+    plt.ylabel('Loss')
+    plt.legend(loc='best', frameon=False)
+    
+    plt.tight_layout()
+    plt.show()
+
 @click.command()
 @click.option('--description', required=True, type=str, help='Description of the model')
 @click.option('--export_file_path', type=click.Path(file_okay=True), default='pkl_data', help='Path to the directory containing the exported model pickle files')
