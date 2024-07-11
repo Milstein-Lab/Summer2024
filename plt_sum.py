@@ -125,12 +125,13 @@ def plot_example_seed(description, example_seed, export_file_path):
 
 
 @click.command()
+@click.option('--example_seed', required=True, type=int, help='Seed to build model', default=0)
 @click.option('--description', required=True, type=str, help='Description of the model')
 @click.option('--export_file_path', type=click.Path(file_okay=True), default='pkl_data',
               help='Path to the directory containing the exported model pickle files')
-def main(description, export_file_path):
+def main(description, example_seed, export_file_path):
     plot_averaged_results(description, export_file_path)
-    plot_example_seed(description, 20, export_file_path)
+    plot_example_seed(description, example_seed, export_file_path)
 
 
 if __name__ == "__main__":
