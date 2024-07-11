@@ -481,30 +481,12 @@ class Net(nn.Module):
             
             for layer in reverse_layers:
                 if layer == 'Out':
-                    self.nudges[layer] =  beta_out * self.ReLU_derivative(self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])  # the ReLU derivative term is dA/dz
+                    self.nudges[layer] =  beta_Out * self.ReLU_derivative(self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])  # the ReLU derivative term is dA/dz
                     self.nudges_train_history[layer].append(self.nudges[layer])
-                elif layer == 'H2':
-                    self.forward_dend_state[layer] = self.forward_activity[prev_layer] @ self.weights[prev_layer]
-                    self.backward_dend_state[layer] = self.backward_activity[prev_layer] @ self.weights[prev_layer]
-                    self.nudges[layer] = beta_h2 * self.ReLU_derivative(self.forward_soma_state[layer]) * (
-                            self.backward_dend_state[layer] - self.forward_dend_state[layer])
-                    self.forward_dend_state_train_history[layer].append(self.nudges[layer])
-                    self.backward_dend_state_train_history[layer].append(self.backward_dend_state[layer])
-                    self.nudges_train_history[layer].append(self.nudges[layer])
-
-                elif layer == 'H1':
-                    self.forward_dend_state[layer] = self.forward_activity[prev_layer] @ self.weights[prev_layer]
-                    self.backward_dend_state[layer] = self.backward_activity[prev_layer] @ self.weights[prev_layer]
-                    self.nudges[layer] = beta_h1 * self.ReLU_derivative(self.forward_soma_state[layer]) * (
-                            self.backward_dend_state[layer] - self.forward_dend_state[layer])
-                    self.forward_dend_state_train_history[layer].append(self.nudges[layer])
-                    self.backward_dend_state_train_history[layer].append(self.backward_dend_state[layer])
-                    self.nudges_train_history[layer].append(self.nudges[layer])
-
                 else:
                     self.forward_dend_state[layer] = self.forward_activity[prev_layer] @ self.weights[prev_layer]
                     self.backward_dend_state[layer] = self.backward_activity[prev_layer] @ self.weights[prev_layer]
-                    self.nudges[layer] = beta_input * self.ReLU_derivative(self.forward_soma_state[layer]) * (
+                    self.nudges[layer] = eval(f'beta_{layer}') * self.ReLU_derivative(self.forward_soma_state[layer]) * (
                             self.backward_dend_state[layer] - self.forward_dend_state[layer])
                     self.forward_dend_state_train_history[layer].append(self.nudges[layer])
                     self.backward_dend_state_train_history[layer].append(self.backward_dend_state[layer])
