@@ -470,18 +470,41 @@ class Net(nn.Module):
 
     def backward_ojas(self, targets):
         with torch.no_grad():
-            beta = self.extra_params['beta']
+            beta_Out = self.extra_params['beta_out']
+            beta_H2 = self.extra_params['beta_h2']
+            beta_H1 = self.extra_params['beta_h1']
+            beta_Input = self.extra_params['beta_input']
+
+
             prev_layer = None
             reverse_layers = list(self.layers.keys())[::-1]
             
             for layer in reverse_layers:
                 if layer == 'Out':
-                    self.nudges[layer] =  self.ReLU_derivative(self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])  # the ReLU derivative term is dA/dz
+                    self.nudges[layer] =  beta_out * self.ReLU_derivative(self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])  # the ReLU derivative term is dA/dz
                     self.nudges_train_history[layer].append(self.nudges[layer])
+                elif layer == 'H2':
+                    self.forward_dend_state[layer] = self.forward_activity[prev_layer] @ self.weights[prev_layer]
+                    self.backward_dend_state[layer] = self.backward_activity[prev_layer] @ self.weights[prev_layer]
+                    self.nudges[layer] = beta_h2 * self.ReLU_derivative(self.forward_soma_state[layer]) * (
+                            self.backward_dend_state[layer] - self.forward_dend_state[layer])
+                    self.forward_dend_state_train_history[layer].append(self.nudges[layer])
+                    self.backward_dend_state_train_history[layer].append(self.backward_dend_state[layer])
+                    self.nudges_train_history[layer].append(self.nudges[layer])
+
+                elif layer == 'H1':
+                    self.forward_dend_state[layer] = self.forward_activity[prev_layer] @ self.weights[prev_layer]
+                    self.backward_dend_state[layer] = self.backward_activity[prev_layer] @ self.weights[prev_layer]
+                    self.nudges[layer] = beta_h1 * self.ReLU_derivative(self.forward_soma_state[layer]) * (
+                            self.backward_dend_state[layer] - self.forward_dend_state[layer])
+                    self.forward_dend_state_train_history[layer].append(self.nudges[layer])
+                    self.backward_dend_state_train_history[layer].append(self.backward_dend_state[layer])
+                    self.nudges_train_history[layer].append(self.nudges[layer])
+
                 else:
                     self.forward_dend_state[layer] = self.forward_activity[prev_layer] @ self.weights[prev_layer]
                     self.backward_dend_state[layer] = self.backward_activity[prev_layer] @ self.weights[prev_layer]
-                    self.nudges[layer] = beta * self.ReLU_derivative(self.forward_soma_state[layer]) * (
+                    self.nudges[layer] = beta_input * self.ReLU_derivative(self.forward_soma_state[layer]) * (
                             self.backward_dend_state[layer] - self.forward_dend_state[layer])
                     self.forward_dend_state_train_history[layer].append(self.nudges[layer])
                     self.backward_dend_state_train_history[layer].append(self.backward_dend_state[layer])
@@ -508,11 +531,14 @@ class Net(nn.Module):
         with torch.no_grad():
             lr = self.lr
             # bias_lr = self.extra_params['bias_lr']
-            alpha = self.extra_params['alpha']
+            alpha_Out = self.extra_params['alpha_out']
+            alpha_H2 = self.extra_params['alpha_h2']
+            alpha_H1 = self.extra_params['alpha_h1']
+            alpha_Input = self.extra_params['alpha_Input']
             with torch.no_grad():
                 prev_layer = 'Input'
                 for layer in self.layers.keys():
-                    self.weights[layer].data += (lr * self.backward_activity[layer].T * (self.forward_activity_mean_subtracted[prev_layer] - alpha * self.backward_activity[layer].T * self.weights[layer].data))
+                    self.weights[layer].data += (lr * self.backward_activity[layer].T * (self.forward_activity_mean_subtracted[prev_layer] - eval(f'alpha_{layer}') * self.backward_activity[layer].T * self.weights[layer].data))
                     if self.use_bias and self.learn_bias:
                         self.biases[layer].data += lr * self.nudges[layer].squeeze()
                     prev_layer = layer
@@ -966,8 +992,15 @@ def evaluate_model(base_seed, num_input_units, num_classes, description, lr, deb
     if "ojas_dend" in description:
         mean_subtract_input = True
         if "fixed_bias" in description:
-            extra_params['alpha'] = 0.6822
-            extra_params['beta'] = 1.895
+            extra_params['alpha_out'] = 0.2417
+            extra_params['alpha_h2'] = 0.1259
+            extra_params['alpha_h1'] = 1.5772
+            extra_params['alpha_Input'] = 0.8469
+            extra_params['beta_out'] = 1.8592
+            extra_params['beta_h2'] = 1.6188
+            extra_params['beta_h1'] = 0.7913
+            extra_params['beta_input'] = 0.8497
+
         if "zero_bias" in description:
             extra_params['alpha'] = 0.6427
             extra_params['beta'] = 1.2165
@@ -1115,7 +1148,7 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                'dend_temp_contrast_fixed_bias': 0.07,
                'ojas_dend_learned_bias': 0.01,
                'ojas_dend_zero_bias': 0.02,
-               'ojas_dend_fixed_bias': 0.019,
+               'ojas_dend_fixed_bias': 0.0106,
                'dend_EI_contrast_learned_bias': 0.101,
                'dend_EI_contrast_zero_bias': 0.179,
                'dend_EI_contrast_fixed_bias': 0.068}
@@ -1123,13 +1156,20 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
     extra_params = {}
 
     if "ojas_dend" in description:
-        mean_subtract_input = True
         if "fixed_bias" in description:
-            extra_params['alpha'] = 0.6822
-            extra_params['beta'] = 1.895
+            extra_params['alpha_out'] = 0.2417
+            extra_params['alpha_h2'] = 0.1259
+            extra_params['alpha_h1'] = 1.5772
+            extra_params['alpha_Input'] = 0.8469
+            extra_params['beta_out'] = 1.8592
+            extra_params['beta_h2'] = 1.6188
+            extra_params['beta_h1'] = 0.7913
+            extra_params['beta_input'] = 0.8497
+
         if "zero_bias" in description:
             extra_params['alpha'] = 0.6427
             extra_params['beta'] = 1.2165
+
 
 
 

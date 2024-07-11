@@ -50,16 +50,22 @@ def objective(trial, config, base_seed, num_seeds=5, num_epochs=1):
 
 # Configuration dictionary
 config = {
-    "description": "ojas_dend_zero_bias",
+    "description": "ojas_dend_fixed_bias",
     "extra_params": {
-        "alpha": (1e-5, 2),
-        "beta": (1e-5, 2)
+        "alpha_out": (1e-5, 2),
+        "alpha_h2": (1e-5, 2),
+        "alpha_h1": (1e-5, 2),
+        "alpha_Input": (1e-5, 2),
+        "beta_out": (1e-5, 2),
+        "beta_h2": (1e-5, 2),
+        "beta_h1": (1e-5, 2),
+        "beta_input": (1e-5, 2),
     }
 }
 base_seed = 0
 
 study = optuna.create_study(direction="maximize")
-study.optimize(lambda trial: objective(trial, config, base_seed), n_trials=40)
+study.optimize(lambda trial: objective(trial, config, base_seed), n_trials=400)
 
 print("Best trial:")
 trial = study.best_trial
