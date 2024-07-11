@@ -1,5 +1,4 @@
 import optuna
-import spiral_neuralnet as spiral
 from spiral_neuralnet import *
 
 start_time = time.time()
@@ -71,12 +70,26 @@ def main(description, num_trials, export, export_file_path):
     study.optimize(lambda trial: objective(trial, config, base_seed), n_trials=num_trials)
 
     print("Best trial:")
-    trial = study.best_trial
+    best_trial = study.best_trial
 
-    print(f"  Val Accuracy: {trial.value}")
+    print(f"  Val Accuracy: {best_trial.value}")
     print("  Params: ")
-    for key, value in trial.params.items():
+    best_params_text = "Best Params:\n"
+    for key, value in best_trial.params.items():
         print(f"    {key}: {value:.4f}")
+        best_params_text += f"{key}: {value:.4f}\n"
+
+    # Plotting
+    fig = optuna.visualization.plot_optimization_history(study)
+    fig.update_layout(title_text="Accuracy over Trials", xaxis_title="Trial", yaxis_title='Accuracy')
+    fig.add_annotation(text=best_params_text, xref="paper", yref="paper", x=0.5, y=-0.2, showarrow=False, align="left")
+    fig.show()
+
+    for param in study.best_params:
+        fig = optuna.visualization.plot_slice(study, params=[param])
+        fig.update_layout(title_text=f"{param} vs Accuracy", xaxis_title=f"{param} Value", yaxis_title='Accuracy')
+        fig.add_annotation(text=best_params_text, xref="paper", yref="paper", x=0.5, y=-0.2, showarrow=False, align="left")
+        fig.show()
 
 if __name__ == "__main__":
     main(standalone_mode=False)

@@ -1050,13 +1050,13 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
         results = Parallel(n_jobs=num_cores)(delayed(evaluate_model)(seed, num_input_units=num_input_units, hidden_units=hidden_units, num_classes=num_classes, 
                                      description=description, lr=lr, num_train_steps=num_train_steps, debug=debug, 
                                      show_plot=example_show_plot, png_save_path=png_save_path, svg_save_path=svg_save_path,
-                                     test=test, plot_example_seed=base_seed, extra_params=extra_params) for seed in seeds)
+                                     test=test, plot_example_seed=base_seed, extra_params=extra_params, return_net=return_net) for seed in seeds)
     else:
         # Run without multiprocessing
         results = [evaluate_model(seed, num_input_units=num_input_units, hidden_units=hidden_units, num_classes=num_classes, 
                                      description=description, lr=lr, num_train_steps=num_train_steps, debug=debug, 
                                      show_plot=example_show_plot, png_save_path=png_save_path, svg_save_path=svg_save_path,
-                                     test=test, plot_example_seed=base_seed, extra_params=extra_params) for seed in seeds]
+                                     test=test, plot_example_seed=base_seed, extra_params=extra_params, return_net=return_net) for seed in seeds]
 
     # Extract and average the metrics 
     val_accuracies = [result[1] for result in results]
@@ -1198,6 +1198,7 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
     if debug:
         print(f"Total execution time: {total_time:.3f} seconds")
 
+    # TODO Fix this 
     if interactive:
         globals().update(locals())
 
