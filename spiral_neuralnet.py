@@ -1120,6 +1120,18 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                'dend_EI_contrast_zero_bias': 0.179,
                'dend_EI_contrast_fixed_bias': 0.068}
 
+    extra_params = {}
+
+    if "ojas_dend" in description:
+        mean_subtract_input = True
+        if "fixed_bias" in description:
+            extra_params['alpha'] = 0.6822
+            extra_params['beta'] = 1.895
+        if "zero_bias" in description:
+            extra_params['alpha'] = 0.6427
+            extra_params['beta'] = 1.2165
+
+
 
     num_classes = 4
     if save_plot:
@@ -1136,10 +1148,7 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
     num_input_units = 2
 
     
-    mean_val_accuracy = eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_input_units, num_classes,
-                                                  export, export_file_path, show_plot, png_save_path, svg_save_path,
-                                                  label_dict, debug, num_train_steps, test=True,
-                                                  extra_params=extra_params)
+    mean_val_accuracy = eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_input_units, num_classes, export, export_file_path, show_plot, png_save_path, svg_save_path, label_dict, debug, num_train_steps, test=True, extra_params=extra_params)
 
     if interactive:
         globals().update(locals())
