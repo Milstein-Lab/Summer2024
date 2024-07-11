@@ -15,27 +15,6 @@ def objective(trial, config, base_seed, num_seeds=5, num_epochs=1):
     for param, (low, high) in param_ranges.items():
         extra_params[param] = trial.suggest_float(param, low, high)
 
-    # val_accuracies = eval_model_multiple_seeds(
-    #     description=config['description'], 
-    #     lr=learning_rate, 
-    #     base_seed=base_seed,
-    #     num_seeds=num_seeds,
-    #     num_input_units=config['num_input_units'],
-    #     hidden_units=config['hidden_units'],
-    #     num_classes=config['num_classes'],
-    #     export=False,
-    #     export_file_path=None,
-    #     show_plot=False,
-    #     png_save_path=None,
-    #     svg_save_path=None,
-    #     label_dict={},
-    #     debug=False,
-    #     num_train_steps=None,
-    #     extra_params=extra_params,
-    #     test=True,
-    #     verbose=False
-    # )
-
     val_accuracies = eval_model_multiple_seeds(
         lr=learning_rate, 
         base_seed=base_seed,
@@ -43,6 +22,7 @@ def objective(trial, config, base_seed, num_seeds=5, num_epochs=1):
         extra_params=extra_params,
         test=False,
         verbose=False,
+        return_net=False,
         **config
     )
 
