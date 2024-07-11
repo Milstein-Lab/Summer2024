@@ -12,7 +12,7 @@ import pickle
 import sys
 import os
 import click
-from multiprocessing import cpu_count
+from os import cpu_count
 from concurrent.futures import ProcessPoolExecutor
 from joblib import Parallel, delayed
 from functools import partial
@@ -20,7 +20,6 @@ import traceback
 import time
 from datetime import datetime
 
-start_time = time.time()
 
 # set_seed() and seed_worker()
 def set_seed(seed=None, seed_torch=True, verbose=False):
@@ -978,11 +977,11 @@ def evaluate_model(base_seed, num_input_units, hidden_units, num_classes, descri
         png_save_path = None
         svg_save_path = None
         
-    if debug: print(f'Before data loaded: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
+    if debug: print(os.getpid())  # print(f'Before data loaded: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
     _, _, _, _, _, _, test_loader, train_loader, val_loader = (
         generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=show_plot,
                       png_save_path=png_save_path, svg_save_path=svg_save_path))
-    if debug: print(f'After data loaded: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
+    # if debug: print(f'After data loaded: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
     
     if "ojas_dend" in description:
         mean_subtract_input = True
@@ -1014,7 +1013,7 @@ def evaluate_model(base_seed, num_input_units, hidden_units, num_classes, descri
     net = Net(nn.ReLU, num_input_units, hidden_units, num_classes, description=description,
               use_bias=use_bias, learn_bias=learn_bias, lr=lr, extra_params=extra_params,
               mean_subtract_input=mean_subtract_input, seed=network_seed).to(DEVICE)
-    if debug: print(f'Network initialized: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
+    # if debug: print(f'Network initialized: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
 
     if debug:
         net.register_hooks()
@@ -1028,25 +1027,30 @@ def evaluate_model(base_seed, num_input_units, hidden_units, num_classes, descri
     else:
         net.train_model(description, train_loader, val_loader, debug=debug, num_train_steps=num_train_steps,
                         num_epochs=num_epochs, device=DEVICE)
-    if debug: print(f'Exited train loop: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
+    # if debug: print(f'Exited train loop: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
         
     if test:    
         net.test_model(test_loader, verbose=False, device=DEVICE)
-        if debug: print(f'Finished test: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
+        # if debug: print(f'Finished test: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
+        test_acc = net.test_acc
+    else:
+        test_acc = None
 
     val_acc = net.val_acc
     final_val_loss = net.final_loss
-    test_acc = net.test_acc if net.test_acc else None
     
     return net, val_acc, final_val_loss, test_acc
 
-def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_input_units, hidden_units, num_classes, export,
+
+def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, num_input_units, hidden_units, num_classes, export,
                               export_file_path, show_plot, png_save_path, svg_save_path, label_dict, debug,
-                              num_train_steps, test=True, extra_params=None, verbose=True):
+                              num_train_steps, test=True, extra_params=None, verbose=True, **kwargs):
     
-    
+    if num_cores is None:
     # Determine number of available cores
-    num_cores = min(cpu_count(), num_seeds)
+        num_cores = min(cpu_count(), num_seeds)
+    else:
+        num_cores = min(num_cores, num_seeds)
     
     if show_plot and num_cores > 1:
         example_show_plot = False
@@ -1055,46 +1059,54 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_input_u
     else:
         example_show_plot = True
 
-    if debug: print(f'Before partial function made: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
+    # if debug: print(f'Before partial function made: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
     # Partial function with fixed parameters except seed 
-    partial_evaluate_model = partial(evaluate_model, num_input_units=num_input_units, hidden_units=hidden_units, num_classes=num_classes, 
-                                     description=description, lr=lr, num_train_steps=num_train_steps, debug=debug, 
-                                     show_plot=example_show_plot, png_save_path=png_save_path, svg_save_path=svg_save_path,
-                                     test=test, plot_example_seed=base_seed, extra_params=extra_params)
-    if debug: print(f'After partial function made: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
+    # partial_evaluate_model = delayed(evaluate_model, num_input_units=num_input_units, hidden_units=hidden_units, num_classes=num_classes, 
+    #                                  description=description, lr=lr, num_train_steps=num_train_steps, debug=debug, 
+    #                                  show_plot=example_show_plot, png_save_path=png_save_path, svg_save_path=svg_save_path,
+    #                                  test=test, plot_example_seed=base_seed, extra_params=extra_params)
+    # if debug: print(f'After partial function made: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
 
     # List of base seeds
     seeds = [base_seed + seed_offset * 10 for seed_offset in range(num_seeds)]
     
-    if num_seeds > 1:
-        if debug: print(f'Multiprocessing started: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
+    if num_cores > 1:
+        # if debug: print(f'Multiprocessing started: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
         # with ProcessPoolExecutor(max_workers=num_cores) as executor:
         #     results = list(executor.map(partial_evaluate_model, seeds))
-        results = Parallel(n_jobs=num_cores)(delayed(partial_evaluate_model)(seed) for seed in seeds)
-        if debug: print(f'Multiprocessing completed: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
+        results = Parallel(n_jobs=num_cores)(delayed(evaluate_model)(seed, num_input_units=num_input_units, hidden_units=hidden_units, num_classes=num_classes, 
+                                     description=description, lr=lr, num_train_steps=num_train_steps, debug=debug, 
+                                     show_plot=example_show_plot, png_save_path=png_save_path, svg_save_path=svg_save_path,
+                                     test=test, plot_example_seed=base_seed, extra_params=extra_params) for seed in seeds)
+        # if debug: print(f'Multiprocessing completed: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
     else:
         # Run without multiprocessing
-        if debug: print(f'Running partial_evaluate_model: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
-        results = [partial_evaluate_model(seed) for seed in seeds]
+        # if debug: print(f'Running partial_evaluate_model: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
+        results = [evaluate_model(seed, num_input_units=num_input_units, hidden_units=hidden_units, num_classes=num_classes, 
+                                     description=description, lr=lr, num_train_steps=num_train_steps, debug=debug, 
+                                     show_plot=example_show_plot, png_save_path=png_save_path, svg_save_path=svg_save_path,
+                                     test=test, plot_example_seed=base_seed, extra_params=extra_params) for seed in seeds]
 
-    
-    if num_seeds > 1 and verbose:
-        # Extract and average the metrics 
-        if debug: print(f'Begin calculating metrics: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
-        val_accuracies = [result[1] for result in results]
-        val_losses = [result[2] for result in results]
-        test_accuracies = [result[3] for result in results]
+    # Extract and average the metrics 
+    # if debug: print(f'Begin calculating metrics: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
+    val_accuracies = [result[1] for result in results]
+    val_losses = [result[2] for result in results]
+    test_accuracies = [result[3] for result in results]
 
-        avg_val_acc = np.mean(val_accuracies)
-        avg_val_loss = np.mean(val_losses)
+    avg_val_acc = np.mean(val_accuracies)
+    avg_val_loss = np.mean(val_losses)
+    if test:
         avg_test_acc = np.mean(test_accuracies)
+    else:
+        avg_test_acc = None
 
+    if num_seeds > 1 and verbose:
         print(f"Averaged Test Accuracy: {avg_test_acc:.3f}")
         print(f"Averaged Validation Accuracy: {avg_val_acc:.3f}")
         print(f"Averaged Validation Loss: {avg_val_loss:.3f}")
         sys.stdout.flush()
 
-        if debug: print(f'Finished calculating metrics: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
+        # if debug: print(f'Finished calculating metrics: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
     
     # Plotting
     if show_plot and test:
@@ -1114,7 +1126,7 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_input_u
         print(f"Network exported to {model_file_path}")
 
     if num_seeds > 1:
-        return val_accuracies
+        return avg_val_acc
     else:
         return results[0][1]
 
@@ -1130,7 +1142,12 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_input_u
 @click.option('--debug', is_flag=True)
 @click.option('--num_train_steps', type=int, default=None)
 @click.option('--num_seeds', type=int, default=1)
-def main(description, show_plot, save_plot, interactive, export, export_file_path, seed, debug, num_train_steps, num_seeds):
+@click.option('--num_cores', type=int, default=None)
+def main(description, show_plot, save_plot, interactive, export, export_file_path, seed, debug, num_train_steps, num_seeds,
+         num_cores):
+    if debug:
+        print(f'Execution started: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
+    start_time = time.time()
 
     base_seed = seed
 
@@ -1167,7 +1184,6 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
     lr = lr_dict[description]
       
     extra_params = {}
-
     if "ojas_dend" in description:
         if "fixed_bias" in description:
             extra_params['alpha_out'] = 0.2417
@@ -1206,21 +1222,19 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
         svg_save_path = None
 
     if debug: print(f'eval_model_multiple_seeds called: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
-    mean_val_accuracy = eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_input_units, hidden_units, num_classes,
+    mean_val_accuracy = eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, num_input_units, hidden_units, num_classes,
                                                   export, export_file_path, show_plot, png_save_path, svg_save_path,
                                                   label_dict, debug, num_train_steps, test=True, extra_params=extra_params)
     
+    end_time = time.time()
+    total_time = end_time - start_time
+    if debug:
+        # print(f'Execution finished: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
+        print(f"Total execution time: {total_time:.3f} seconds")
+
     if interactive:
         globals().update(locals())
 
 
 if __name__ == "__main__":
-    print(f'Execution started: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
     main(standalone_mode=False)
-
-show_time = True
-end_time = time.time()
-total_time = end_time - start_time
-if show_time:
-    print(f'Execution finished: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
-    print(f"Total execution time: {total_time:.3f} seconds")
