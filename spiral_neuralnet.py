@@ -303,10 +303,11 @@ class Net(nn.Module):
             inputs, labels = data
             inputs = inputs.to(device).float()
             labels = labels.to(device).long()
-            if store:
-                self.test_labels = labels
             outputs = self.forward(inputs, store=store, testing=True)
             _, predicted = torch.max(outputs, 1)
+            if store:
+                self.test_labels = labels
+                self.predicted_labels = predicted
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
 
@@ -701,14 +702,15 @@ class Net(nn.Module):
         '''
 
         inputs = self.forward_activity['Input']
-        labels = self.test_labels
+        test_labels = self.test_labels
+        predicted_labels = self.predicted_labels
 
         class_averaged_activity = {}
         sorted_indices_layers = {}
         for key, activity in self.forward_activity.items():
             this_class_averaged_activity = torch.empty((self.output_feature_num, self.forward_activity[key].shape[1]))
             for label in torch.arange(self.output_feature_num):
-                indexes = torch.where(labels == label)
+                indexes = torch.where(test_labels == label)
                 this_class_averaged_activity[label,:] = torch.mean(activity[indexes], dim=0)
 
             max_indices = this_class_averaged_activity.argmax(dim=0)
@@ -750,9 +752,12 @@ class Net(nn.Module):
         axes[1][1].set_ylabel('Loss')
         axes[1][1].legend(loc='best', frameon=False)
 
-        map = self.get_decision_map()
-        axes[1][2].imshow(map, extent=[-2, 2, -2, 2], origin='lower', cmap='coolwarm', alpha=0.7)
-        axes[1][2].scatter(inputs[:,0], inputs[:,1], c=labels, s=4)
+        # map = self.get_decision_map()
+        # axes[1][2].imshow(map, extent=[-2, 2, -2, 2], origin='lower', cmap='coolwarm', alpha=0.7)
+        correct_indices = (predicted_labels == test_labels).nonzero().squeeze()
+        axes[1][2].scatter(inputs[correct_indices,0], inputs[correct_indices,1], c=test_labels[correct_indices], s=4)
+        wrong_indices = (predicted_labels != test_labels).nonzero().squeeze()
+        axes[1][2].scatter(inputs[wrong_indices, 0], inputs[wrong_indices, 1], c='darkgrey', s=4)
         axes[1][2].set_xlabel('x1')
         axes[1][2].set_ylabel('x2')
         axes[1][2].set_title('Predictions')
@@ -1064,10 +1069,7 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
 
     avg_val_acc = np.mean(val_accuracies)
     avg_val_loss = np.mean(val_losses)
-    if test:
-        avg_test_acc = np.mean(test_accuracies)
-    else:
-        avg_test_acc = None
+    avg_test_acc = np.mean(test_accuracies) if test else None
 
     if num_seeds > 1 and verbose:
         print(f"Averaged Test Accuracy: {avg_test_acc:.3f}")
@@ -1113,8 +1115,6 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
 @click.option('--num_cores', type=int, default=None)
 def main(description, show_plot, save_plot, interactive, export, export_file_path, seed, debug, num_train_steps, num_seeds,
          num_cores):
-    if debug:
-        print(f'Execution started: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
     start_time = time.time()
 
     base_seed = seed
@@ -1173,7 +1173,7 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
             extra_params['rec_lr_H1'] = 0.05
             extra_params['rec_lr_H2'] = 0.05
         elif "fixed_bias" in description:
-            extra_params['rec_lr_H1'] = 0.8806
+            extra_params['rec_lr_H1'] = 0.88063
             extra_params['rec_lr_H2'] = 0.05593
         for i in range(len(hidden_units)):
             rec_layer_key = f'rec_lr_H{i+1}'
@@ -1189,7 +1189,6 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
         png_save_path = None
         svg_save_path = None
 
-    if debug: print(f'eval_model_multiple_seeds called: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
     mean_val_accuracy, model_dict = eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, num_input_units, hidden_units, num_classes,
                                                   export, export_file_path, show_plot, png_save_path, svg_save_path,
                                                   label_dict, debug, num_train_steps, test=True, extra_params=extra_params,
