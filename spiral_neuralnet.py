@@ -265,7 +265,7 @@ class Net(nn.Module):
             if self.mean_subtract_input:
                 if not testing:
                     if self.forward_activity_train_history[key]:
-                        x = x - torch.mean(torch.stack(self.forward_activity_train_history[key][-10:]), dim=0)
+                        x = x - torch.mean(torch.stack(self.forward_activity_train_history[key][-num_samples:]), dim=0)
                         self.forward_activity_mean_subtracted[key] = x.detach().clone()
                     else:
                         self.forward_activity_mean_subtracted[key] = x.detach().clone()
@@ -471,10 +471,10 @@ class Net(nn.Module):
 
     def backward_ojas(self, targets):
         with torch.no_grad():
-            beta_Out = self.extra_params['beta_out']
-            beta_H2 = self.extra_params['beta_h2']
-            beta_H1 = self.extra_params['beta_h1']
-            beta_Input = self.extra_params['beta_input']
+            beta_Out = self.extra_params['beta_Out']
+            beta_H2 = self.extra_params['beta_H2']
+            beta_H1 = self.extra_params['beta_H1']
+            # beta_Input = self.extra_params['beta_Input']
 
 
             prev_layer = None
@@ -512,28 +512,37 @@ class Net(nn.Module):
     
     def step_ojas(self):
         with torch.no_grad():
-            lr = self.lr
-            # bias_lr = self.extra_params['bias_lr']
-            alpha_Out = self.extra_params['alpha_out']
-            alpha_H2 = self.extra_params['alpha_h2']
-            alpha_H1 = self.extra_params['alpha_h1']
-            alpha_Input = self.extra_params['alpha_Input']
+            if 'lr_Out' in self.extra_params:
+                lr_Out = self.extra_params['lr_Out']
+            else:
+                lr_Out = self.lr
+            if 'lr_H2' in self.extra_params:
+                lr_H2 = self.extra_params['lr_H2']
+            else:
+                lr_H2 = self.lr
+            if 'lr_H1' in self.extra_params:
+                lr_H1 = self.extra_params['lr_H1']
+            else:
+                lr_H1 = self.lr
+            # lr_Input = self.lr
+            alpha_Out = self.extra_params['alpha_Out']
+            alpha_H2 = self.extra_params['alpha_H2']
+            alpha_H1 = self.extra_params['alpha_H1']
+            # alpha_Input = self.extra_params['alpha_Input']
             with torch.no_grad():
                 prev_layer = 'Input'
                 for layer in self.layers.keys():
-                    self.weights[layer].data += (lr * self.backward_activity[layer].T * (self.forward_activity_mean_subtracted[prev_layer] - eval(f'alpha_{layer}') * self.backward_activity[layer].T * self.weights[layer].data))
+                    self.weights[layer].data += (eval(f'lr_{layer}') * self.backward_activity[layer].T * (self.forward_activity_mean_subtracted[prev_layer] - eval(f'alpha_{layer}') * self.backward_activity[layer].T * self.weights[layer].data))
                     if self.use_bias and self.learn_bias:
-                        self.biases[layer].data += lr * self.nudges[layer].squeeze()
+                        self.biases[layer].data += eval(f'lr_{layer}') * self.nudges[layer].squeeze()
                     prev_layer = layer
     
     def backward_dend_EI_contrast(self, targets):
         with torch.no_grad():
             reverse_layers = list(self.layers.keys())[::-1]
-
             for idx, layer in enumerate(reverse_layers):
                 if layer == 'Out':
-                    self.nudges[layer] = (2.0 / self.output_feature_num) * self.ReLU_derivative(
-                        self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])
+                    self.nudges[layer] = (2.0 / self.output_feature_num) * self.ReLU_derivative(self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])
                     self.nudges[layer].clamp_(-1., 1.)
                 else:
                     upper_layer = reverse_layers[idx - 1]
@@ -664,7 +673,7 @@ class Net(nn.Module):
         self.test_acc = test_acc
         return test_acc
     
-    def get_decision_map(self, DEVICE='cpu', M=500):
+    def get_decision_map(self, DEVICE='cpu', M=500, map_extent=2.):
         """
         Helper function to plot decision map
     
@@ -678,7 +687,8 @@ class Net(nn.Module):
         Returns:
         - decision_map.T (torch.Tensor): Decision map transpose to use in graph
         """
-        X_all = sample_grid(M)
+        X_all = sample_grid(M, x_max=map_extent)
+        print('sample_grid_shape:', X_all.shape)
         y_pred = self.forward(X_all.to(DEVICE), store=False).cpu()
 
         decision_map = torch.argmax(y_pred, dim=1)
@@ -751,8 +761,11 @@ class Net(nn.Module):
         axes[1][1].set_ylabel('Loss')
         axes[1][1].legend(loc='best', frameon=False)
 
-        map = self.get_decision_map()
-        axes[1][2].imshow(map, extent=[-2, 2, -2, 2], origin='lower', cmap='coolwarm', alpha=0.7)
+        map_extent = 1.25
+        map = self.get_decision_map(map_extent=map_extent)
+        # axes[1][2].imshow(map, extent=[-map_extent, map_extent, -map_extent, map_extent], origin='lower', cmap='coolwarm', alpha=0.7)
+        axes[1][2].imshow(map, extent=[-2, 2, -2, 2], origin='lower',
+                          cmap='coolwarm', alpha=0.7)
         axes[1][2].scatter(inputs[:,0], inputs[:,1], c=labels, s=4)
         axes[1][2].set_xlabel('x1')
         axes[1][2].set_ylabel('x2')
@@ -1019,7 +1032,11 @@ def evaluate_model(base_seed, num_input_units, hidden_units, num_classes, descri
 
     val_acc = net.val_acc
     final_val_loss = net.final_loss
-    
+    if debug:
+        print(os.getpid(), base_seed, 'val_acc', val_acc, 'final_val_loss', final_val_loss,
+              'final_train_acc:', net.train_accuracy[-1])
+        if test:
+            print('test_acc', test_acc)
     if return_net:
         return net, val_acc, final_val_loss, test_acc
     else:
@@ -1050,13 +1067,13 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
         results = Parallel(n_jobs=num_cores)(delayed(evaluate_model)(seed, num_input_units=num_input_units, hidden_units=hidden_units, num_classes=num_classes, 
                                      description=description, lr=lr, num_train_steps=num_train_steps, debug=debug, 
                                      show_plot=example_show_plot, png_save_path=png_save_path, svg_save_path=svg_save_path,
-                                     test=test, plot_example_seed=base_seed, extra_params=extra_params) for seed in seeds)
+                                     test=test, plot_example_seed=base_seed, extra_params=extra_params, return_net=return_net) for seed in seeds)
     else:
         # Run without multiprocessing
         results = [evaluate_model(seed, num_input_units=num_input_units, hidden_units=hidden_units, num_classes=num_classes, 
                                      description=description, lr=lr, num_train_steps=num_train_steps, debug=debug, 
                                      show_plot=example_show_plot, png_save_path=png_save_path, svg_save_path=svg_save_path,
-                                     test=test, plot_example_seed=base_seed, extra_params=extra_params) for seed in seeds]
+                                     test=test, plot_example_seed=base_seed, extra_params=extra_params, return_net=return_net) for seed in seeds]
 
     # Extract and average the metrics 
     val_accuracies = [result[1] for result in results]
@@ -1152,14 +1169,18 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
     extra_params = {}
     if "ojas_dend" in description:
         if "fixed_bias" in description:
-            extra_params['alpha_out'] = 0.2417
-            extra_params['alpha_h2'] = 0.1259
-            extra_params['alpha_h1'] = 1.5772
-            extra_params['alpha_Input'] = 0.8469
-            extra_params['beta_out'] = 1.8592
-            extra_params['beta_h2'] = 1.6188
-            extra_params['beta_h1'] = 0.7913
-            extra_params['beta_input'] = 0.8497
+            extra_params['alpha_Out'] = 0.2417
+            extra_params['alpha_H2'] = 0.1259
+            extra_params['alpha_H1'] = 1.5772
+            # extra_params['alpha_Input'] = 0.8469
+            extra_params['beta_Out'] = 1.8592
+            extra_params['beta_H2'] = 1.6188
+            extra_params['beta_H1'] = 0.7913
+            # extra_params['beta_Input'] = 0.8497
+            # extra_params['lr_Out'] = 0.0106
+            # extra_params['lr_H2'] = 0.0106
+            # extra_params['lr_H1'] = 0.0106
+            # # extra_params['lr_Input'] = lr_dict[description]
         if "zero_bias" in description:
             extra_params['alpha'] = 0.6427
             extra_params['beta'] = 1.2165
@@ -1192,6 +1213,9 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                                                   export, export_file_path, show_plot, png_save_path, svg_save_path,
                                                   label_dict, debug, num_train_steps, test=True, extra_params=extra_params,
                                                   return_net=True)
+
+
+
     
     end_time = time.time()
     total_time = end_time - start_time
