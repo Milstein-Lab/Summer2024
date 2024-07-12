@@ -684,7 +684,6 @@ class Net(nn.Module):
         decision_map = torch.argmax(y_pred, dim=1)
         decision_map = decision_map.view(M, M)
         return decision_map.T
-    
 
     def display_summary(self, title=None, seed=None, png_save_path=None, svg_save_path=None, show_plot=False):
         '''
@@ -1086,15 +1085,18 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
             rep_net.display_summary(title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot)
             rep_net.plot_params(title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot) 
                 
+        model_dict = {description: {seed: results[i][0] for i, seed in enumerate(seeds)}}
         if export:
-            model_dict = {description: {seed: results[i][0] for i, seed in enumerate(seeds)}}
             os.makedirs(export_file_path, exist_ok=True)
             model_file_path = os.path.join(export_file_path, f"{description}_models.pkl")
             with open(model_file_path, "wb") as f:
                 pickle.dump(model_dict, f)
             print(f"Network exported to {model_file_path}")
 
-    return avg_val_acc
+    if return_net:
+        return avg_val_acc, model_dict
+    else:
+        return avg_val_acc, None
 
 
 @click.command()
@@ -1145,7 +1147,7 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                'ojas_dend_fixed_bias': 0.0106,
                'dend_EI_contrast_learned_bias': 0.101,
                'dend_EI_contrast_zero_bias': 0.179,
-               'dend_EI_contrast_fixed_bias': 0.068}
+               'dend_EI_contrast_fixed_bias': 0.04576}
     
     lr = lr_dict[description]
       
@@ -1171,8 +1173,8 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
             extra_params['rec_lr_H1'] = 0.05
             extra_params['rec_lr_H2'] = 0.05
         elif "fixed_bias" in description:
-            extra_params['rec_lr_H1'] = 0.179
-            extra_params['rec_lr_H2'] = 0.179
+            extra_params['rec_lr_H1'] = 0.8806
+            extra_params['rec_lr_H2'] = 0.05593
         for i in range(len(hidden_units)):
             rec_layer_key = f'rec_lr_H{i+1}'
             if rec_layer_key not in extra_params:
@@ -1188,7 +1190,7 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
         svg_save_path = None
 
     if debug: print(f'eval_model_multiple_seeds called: {datetime.now().strftime("%H:%M:%S.%f")[:-1]}')
-    mean_val_accuracy = eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, num_input_units, hidden_units, num_classes,
+    mean_val_accuracy, model_dict = eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, num_input_units, hidden_units, num_classes,
                                                   export, export_file_path, show_plot, png_save_path, svg_save_path,
                                                   label_dict, debug, num_train_steps, test=True, extra_params=extra_params,
                                                   return_net=True)
@@ -1198,7 +1200,6 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
     if debug:
         print(f"Total execution time: {total_time:.3f} seconds")
 
-    # TODO Fix this 
     if interactive:
         globals().update(locals())
 
