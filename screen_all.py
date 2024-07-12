@@ -15,7 +15,7 @@ def objective(trial, config, base_seed, num_seeds=5, num_epochs=1):
     for param, (low, high) in param_ranges.items():
         extra_params[param] = trial.suggest_float(param, low, high)
 
-    val_accuracies = eval_model_multiple_seeds(
+    val_accuracies, _ = eval_model_multiple_seeds(
         lr=learning_rate, 
         base_seed=base_seed,
         num_seeds=num_seeds,
@@ -108,8 +108,8 @@ def main(description, num_trials, export, export_file_path):
         bgcolor="white",
         opacity=0.8
     )
-    fig.write_image(f"{graphs_dir}/{description}_screen.png")
-    fig.write_image(f"svg_figures/{description}_screen.svg")
+    # fig.write_image(f"{graphs_dir}/{description}_screen.png")
+    # fig.write_image(f"svg_figures/{description}_screen.svg")
     fig.show()
 
     for param in study.best_params:
@@ -147,8 +147,8 @@ def main(description, num_trials, export, export_file_path):
             opacity=0.8,
             align="left"
         )
-        fig.write_image(f"{graphs_dir}/{description}_{param}_screen.png")
-        fig.write_image(f"svg_figures/{description}_{param}_screen.svg")
+        # fig.write_image(f"{graphs_dir}/{description}_{param}_screen.png")
+        # fig.write_image(f"svg_figures/{description}_{param}_screen.svg")
         fig.show()
 
     if export:
