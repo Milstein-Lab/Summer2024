@@ -13,9 +13,7 @@ import sys
 import os
 import click
 from os import cpu_count
-from concurrent.futures import ProcessPoolExecutor
 from joblib import Parallel, delayed
-from functools import partial
 import traceback
 import time
 from datetime import datetime
@@ -979,7 +977,9 @@ def evaluate_model(base_seed, num_input_units, hidden_units, num_classes, descri
         png_save_path = None
         svg_save_path = None
         
-    if debug: print(os.getpid()) 
+    if debug:
+        print(os.getpid())
+        sys.stdout.flush()
     _, _, _, _, _, _, test_loader, train_loader, val_loader = (
         generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=show_plot,
                       png_save_path=png_save_path, svg_save_path=svg_save_path))
@@ -1051,7 +1051,7 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
     seeds = [base_seed + seed_offset * 10 for seed_offset in range(num_seeds)]
     
     if num_cores > 1:
-        results = Parallel(n_jobs=num_cores)(delayed(evaluate_model)(seed, num_input_units=num_input_units, hidden_units=hidden_units, num_classes=num_classes, 
+        results = Parallel(n_jobs=num_cores)(delayed(evaluate_model)(seed, num_input_units=num_input_units, hidden_units=hidden_units, num_classes=num_classes,
                                      description=description, lr=lr, num_train_steps=num_train_steps, debug=debug, 
                                      show_plot=example_show_plot, png_save_path=png_save_path, svg_save_path=svg_save_path,
                                      test=test, plot_example_seed=base_seed, extra_params=extra_params, return_net=return_net) for seed in seeds)
@@ -1061,7 +1061,8 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
                                      description=description, lr=lr, num_train_steps=num_train_steps, debug=debug, 
                                      show_plot=example_show_plot, png_save_path=png_save_path, svg_save_path=svg_save_path,
                                      test=test, plot_example_seed=base_seed, extra_params=extra_params, return_net=return_net) for seed in seeds]
-
+    if debug:
+        print(results)
     # Extract and average the metrics 
     val_accuracies = [result[1] for result in results]
     val_losses = [result[2] for result in results]
