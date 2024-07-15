@@ -1050,7 +1050,6 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
     # List of base seeds
     seeds = [base_seed + seed_offset * 10 for seed_offset in range(num_seeds)]
     
-    # TODO figure out why i get this error: OSError: [WinError 1450] Insufficient system resources exist to complete the requested service (memory problem?)
     if num_cores > 1:
         results = Parallel(n_jobs=num_cores)(delayed(evaluate_model)(seed, num_input_units=num_input_units, hidden_units=hidden_units, num_classes=num_classes, 
                                      description=description, lr=lr, num_train_steps=num_train_steps, debug=debug, 

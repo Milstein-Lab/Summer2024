@@ -4,7 +4,7 @@ from spiral_neuralnet import *
 
 start_time = time.time()
 
-def objective(trial, config, base_seed, num_seeds=5, num_epochs=1):
+def objective(trial, config, base_seed):
     learning_rate = trial.suggest_float("learning_rate", 1e-5, 0.5, log=True)
 
     # Extract parameter ranges
@@ -18,7 +18,6 @@ def objective(trial, config, base_seed, num_seeds=5, num_epochs=1):
     val_accuracies, _ = eval_model_multiple_seeds(
         lr=learning_rate, 
         base_seed=base_seed,
-        num_seeds=num_seeds,
         extra_params=extra_params,
         test=False,
         verbose=False,
@@ -34,7 +33,15 @@ def objective(trial, config, base_seed, num_seeds=5, num_epochs=1):
 @click.option('--num_trials', type=int, default=40)
 @click.option('--export', is_flag=True)
 @click.option('--export_file_path', type=click.Path(file_okay=True), default='screen_data_history')
-def main(description, num_trials, export, export_file_path):
+@click.option('--num_seeds', type=int, default=5)
+@click.option('--num_cores', type=int, default=None)
+def main(description, num_trials, export, export_file_path, num_seeds, num_cores):
+    
+    if num_cores is None:
+        num_cores = min(cpu_count(), num_seeds)
+    else:
+        num_cores = min(num_cores, num_seeds)
+
     # Configuration dictionary
     config = {
         "description": description,
@@ -49,7 +56,8 @@ def main(description, num_trials, export, export_file_path):
         "export": False,
         "export_file_path": None,
         "param_ranges": {},
-        "num_cores": None,
+        "num_seeds": num_seeds,
+        "num_cores": num_cores,
         "label_dict": {}
     }
 
@@ -67,7 +75,7 @@ def main(description, num_trials, export, export_file_path):
 
     base_seed = 0
 
-    study = optuna.create_study(direction="maximize")
+    study = optuna.create_study(study_name=f'{description}_Optimization', direction="maximize")
     study.optimize(lambda trial: objective(trial, config, base_seed), n_trials=num_trials)
 
     print("Best trial:")
@@ -78,7 +86,7 @@ def main(description, num_trials, export, export_file_path):
     print(f"  Val Accuracy: {best_trial.value}")
     print("  Params: ")
     for key, value in best_trial.params.items():
-        print(f"    {key}: {value:.4f}")
+        print(f"    {key}: {value}")
         best_params_dict[key] = value
 
     # Plotting
