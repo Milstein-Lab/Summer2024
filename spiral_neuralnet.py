@@ -976,7 +976,7 @@ def generate_data(K=4, sigma=0.16, N=2000, seed=None, gen=None, display=False, p
 def evaluate_model(base_seed, num_input_units, hidden_units, num_classes, description, lr, debug, num_train_steps, show_plot=False, 
                    png_save_path=None, svg_save_path=None, test=False, plot_example_seed=None, extra_params=None, return_net=False):
     
-    num_epochs = 1
+    num_epochs = 6
     data_split_seed = 0
     network_seed = base_seed + 1
     data_order_seed = base_seed + 2
@@ -1158,7 +1158,7 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                'dend_temp_contrast_fixed_bias': 0.07,
                'ojas_dend_learned_bias': 0.01,
                'ojas_dend_zero_bias': 0.02,
-               'ojas_dend_fixed_bias': 0.0106,
+               'ojas_dend_fixed_bias': 0.0069,
                'dend_EI_contrast_learned_bias': 0.101,
                'dend_EI_contrast_zero_bias': 0.179,
                'dend_EI_contrast_fixed_bias': 0.04576}
@@ -1168,13 +1168,13 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
     extra_params = {}
     if "ojas_dend" in description:
         if "fixed_bias" in description:
-            extra_params['alpha_Out'] = 0.2417
-            extra_params['alpha_H2'] = 0.1259
-            extra_params['alpha_H1'] = 1.5772
+            extra_params['alpha_Out'] = 0.0590
+            extra_params['alpha_H2'] = 0.2274
+            extra_params['alpha_H1'] = 1.2339
             # extra_params['alpha_Input'] = 0.8469
-            extra_params['beta_Out'] = 1.8592
-            extra_params['beta_H2'] = 1.6188
-            extra_params['beta_H1'] = 0.7913
+            extra_params['beta_Out'] = 1.8881
+            extra_params['beta_H2'] = 1.2264
+            extra_params['beta_H1'] = 1.7417
             # extra_params['beta_Input'] = 0.8497
             # extra_params['lr_Out'] = 0.0106
             # extra_params['lr_H2'] = 0.0106

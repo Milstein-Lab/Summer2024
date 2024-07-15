@@ -56,8 +56,12 @@ def main(description, num_trials, export, export_file_path):
     # Populate param_ranges based on description
     if "ojas_dend" in description:
         config["param_ranges"] = {
-            "alpha": (1e-5, 2),
-            "beta": (1e-5, 2)
+            "alpha_Out": (1e-5, 2),
+            "alpha_H2":(1e-5, 2),
+            "alpha_H1":(1e-5, 2),
+            "beta_Out": (1e-5, 2),
+            "beta_H2":(1e-5, 2),
+            "beta_H1":(1e-5, 2),
         }
     elif "dend_EI_contrast" in description:
         hidden_units = config['hidden_units']
@@ -78,7 +82,7 @@ def main(description, num_trials, export, export_file_path):
     print(f"  Val Accuracy: {best_trial.value}")
     print("  Params: ")
     for key, value in best_trial.params.items():
-        print(f"    {key}: {value:.4f}")
+        print(f"    {key}: {value:.6f}")
         best_params_dict[key] = value
 
     # Plotting
