@@ -6,19 +6,16 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
-from tqdm import tqdm
+from tqdm.autonotebook import tqdm
 import random
 import pickle
 import sys
 import os
-import click
 from os import cpu_count
-from concurrent.futures import ProcessPoolExecutor
+import click
 from joblib import Parallel, delayed
-from functools import partial
 import traceback
 import time
-from datetime import datetime
 
 
 # set_seed() and seed_worker()
@@ -793,7 +790,7 @@ class Net(nn.Module):
 
         axes[1][0].set_xlabel('Train Steps')
         axes[1][0].set_ylabel('Accuracy (%)')
-        axes[1][0].legend(loc='best', frameon=False, handlelength=0)
+        axes[1][0].legend(loc='best', frameon=False)
 
         # Plotting Losses
 
@@ -1020,7 +1017,8 @@ def generate_data(K=4, sigma=0.16, N=2000, seed=None, gen=None, display=False, p
     return X_test, y_test, X_train, y_train, X_val, y_val, test_loader, train_loader, val_loader
 
 def evaluate_model(base_seed, num_input_units, hidden_units, num_classes, description, lr, debug, num_train_steps, show_plot=False, 
-                   png_save_path=None, svg_save_path=None, test=False, plot_example_seed=None, extra_params=None, return_net=False):
+                   png_save_path=None, svg_save_path=None, test=False, plot_example_seed=None, extra_params=None, return_net=False,
+                   export=False):
     
     num_epochs = 1
     data_split_seed = 0
@@ -1110,18 +1108,29 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
     # List of base seeds
     seeds = [base_seed + seed_offset * 10 for seed_offset in range(num_seeds)]
     
-    # TODO figure out why i get this error: OSError: [WinError 1450] Insufficient system resources exist to complete the requested service (memory problem?)
+    eval_params = {
+        'num_input_units': num_input_units,
+        'hidden_units': hidden_units,
+        'num_classes': num_classes,
+        'description': description,
+        'lr': lr,
+        'num_train_steps': num_train_steps,
+        'debug': debug,
+        'show_plot': example_show_plot,
+        'png_save_path': png_save_path,
+        'svg_save_path': svg_save_path,
+        'test': test,
+        'plot_example_seed': base_seed,
+        'extra_params': extra_params,
+        'return_net': return_net,
+        'export': export
+    }
+
     if num_cores > 1:
-        results = Parallel(n_jobs=num_cores)(delayed(evaluate_model)(seed, num_input_units=num_input_units, hidden_units=hidden_units, num_classes=num_classes, 
-                                     description=description, lr=lr, num_train_steps=num_train_steps, debug=debug, 
-                                     show_plot=example_show_plot, png_save_path=png_save_path, svg_save_path=svg_save_path,
-                                     test=test, plot_example_seed=base_seed, extra_params=extra_params, return_net=return_net) for seed in seeds)
+        results = Parallel(n_jobs=num_cores)(delayed(evaluate_model)(seed, **eval_params) for seed in seeds)
     else:
         # Run without multiprocessing
-        results = [evaluate_model(seed, num_input_units=num_input_units, hidden_units=hidden_units, num_classes=num_classes, 
-                                     description=description, lr=lr, num_train_steps=num_train_steps, debug=debug, 
-                                     show_plot=example_show_plot, png_save_path=png_save_path, svg_save_path=svg_save_path,
-                                     test=test, plot_example_seed=base_seed, extra_params=extra_params, return_net=return_net) for seed in seeds]
+        results = [evaluate_model(seed, **eval_params) for seed in seeds]
 
     # Extract and average the metrics 
     val_accuracies = [result[1] for result in results]
@@ -1145,7 +1154,7 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
         with open(model_file_path, "wb") as f:
             pickle.dump(model_dict, f)
         print(f"Network exported to {model_file_path}")
-    
+
     if return_net:
         # Plotting
         if show_plot and test:
@@ -1157,7 +1166,7 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
             rep_net.plot_params(title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot) 
 
 
-    if return_net:
+    if return_net and export:
         return avg_val_acc, model_dict
     else:
         return avg_val_acc, None
@@ -1260,13 +1269,9 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                                                   label_dict, debug, num_train_steps, test=True, extra_params=extra_params,
                                                   return_net=True)
 
-
-
-
     end_time = time.time()
     total_time = end_time - start_time
-    if debug:
-        print(f"Total execution time: {total_time:.3f} seconds")
+    if debug: print(f"Total execution time: {total_time:.3f} seconds")
 
     if interactive:
         globals().update(locals())

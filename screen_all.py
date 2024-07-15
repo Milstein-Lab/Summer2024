@@ -1,10 +1,13 @@
 import optuna
 import plotly.graph_objs as go
+import sqlite3
 from spiral_neuralnet import *
 
 start_time = time.time()
 
-def objective(trial, config, base_seed, num_seeds=5, num_epochs=1):
+def objective(trial, config, base_seed, db_path):
+    trial_start_time = time.time()
+
     learning_rate = trial.suggest_float("learning_rate", 1e-5, 0.5, log=True)
 
     # Extract parameter ranges
@@ -13,12 +16,11 @@ def objective(trial, config, base_seed, num_seeds=5, num_epochs=1):
     # Initialize extra_params with suggested values
     extra_params = {}
     for param, (low, high) in param_ranges.items():
-        extra_params[param] = trial.suggest_float(param, low, high)
+        extra_params[param] = trial.suggest_float(param, low, high, log=True)
 
     val_accuracies, _ = eval_model_multiple_seeds(
         lr=learning_rate, 
         base_seed=base_seed,
-        num_seeds=num_seeds,
         extra_params=extra_params,
         test=False,
         verbose=False,
@@ -27,6 +29,27 @@ def objective(trial, config, base_seed, num_seeds=5, num_epochs=1):
     )
 
     avg_accuracy = np.mean(val_accuracies)
+
+    trial_end_time = time.time()
+    trial_time = trial_end_time - trial_start_time
+
+    with sqlite3.connect(db_path) as conn:
+        c = conn.cursor()
+
+        # Get the current best trial number
+        c.execute("SELECT trial_number, accuracy FROM trial_results ORDER BY accuracy DESC LIMIT 1")
+        best_trial_row = c.fetchone()
+        if best_trial_row is None or avg_accuracy > best_trial_row[1]:
+            best_trial_so_far = trial.number
+        else:
+            best_trial_so_far = best_trial_row[0]
+
+        c.execute(
+            "INSERT INTO trial_results (trial_number, learning_rate, accuracy, extra_params, trial_time, best_trial_so_far) VALUES (?, ?, ?, ?, ?, ?)",
+            (trial.number, learning_rate, avg_accuracy, str(extra_params), trial_time, best_trial_so_far)
+        )
+        conn.commit()
+
     return avg_accuracy
 
 @click.command()
@@ -34,7 +57,15 @@ def objective(trial, config, base_seed, num_seeds=5, num_epochs=1):
 @click.option('--num_trials', type=int, default=40)
 @click.option('--export', is_flag=True)
 @click.option('--export_file_path', type=click.Path(file_okay=True), default='screen_data_history')
-def main(description, num_trials, export, export_file_path):
+@click.option('--num_seeds', type=int, default=5)
+@click.option('--num_cores', type=int, default=None)
+def main(description, num_trials, export, export_file_path, num_seeds, num_cores):
+    
+    if num_cores is None:
+        num_cores = min(cpu_count(), num_seeds)
+    else:
+        num_cores = min(num_cores, num_seeds)
+
     # Configuration dictionary
     config = {
         "description": description,
@@ -49,7 +80,8 @@ def main(description, num_trials, export, export_file_path):
         "export": False,
         "export_file_path": None,
         "param_ranges": {},
-        "num_cores": None,
+        "num_seeds": num_seeds,
+        "num_cores": num_cores,
         "label_dict": {}
     }
 
@@ -67,12 +99,31 @@ def main(description, num_trials, export, export_file_path):
         hidden_units = config['hidden_units']
         for i in range(len(hidden_units)):
             rec_layer_key = f'rec_lr_H{i+1}'
-            config["param_ranges"][rec_layer_key] = (1e-5, 2)
+            config["param_ranges"][rec_layer_key] = (1e-5, 1)
 
     base_seed = 0
 
-    study = optuna.create_study(direction="maximize")
-    study.optimize(lambda trial: objective(trial, config, base_seed), n_trials=num_trials)
+    study_db_path = f'sqlite:///screen_data/{description}_optuna_study.db'
+
+    os.makedirs("screen_data", exist_ok=True)
+    db_path = f"screen_data/{description}_optimization_results.db"
+    with sqlite3.connect(db_path) as conn:
+        c = conn.cursor()
+        c.execute("DROP TABLE IF EXISTS trial_results")
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS trial_results (
+                trial_number INTEGER PRIMARY KEY,
+                learning_rate REAL,
+                accuracy REAL,
+                extra_params TEXT,
+                trial_time REAL, 
+                best_trial_so_far INTEGER
+            )
+        """)
+        conn.commit()
+
+    study = optuna.create_study(study_name=f'{description}_Optimization', direction="maximize", storage=study_db_path, load_if_exists=True)
+    study.optimize(lambda trial: objective(trial, config, base_seed, db_path), n_trials=num_trials)
 
     print("Best trial:")
     best_trial = study.best_trial
@@ -176,15 +227,16 @@ def main(description, num_trials, export, export_file_path):
             pickle.dump(screen_data_history, f)
         print(f'Screen data history saved to pkl_data/{export_file_path}')
 
-        if os.path.exists('pkl_data/optuna_studies.pkl'):
-            with open(f'pkl_data/optuna_studies.pkl', 'rb') as f:
+        study_path = 'optuna_studies'
+        if os.path.exists(f'pkl_data/{study_path}.pkl'):
+            with open(f'pkl_data/{study_path}.pkl', 'rb') as f:
                 optuna_studies = pickle.load(f)
         else:
             optuna_studies = {}
         optuna_studies[description] = study
-        with open('pkl_data/optuna_studies.pkl', 'wb') as f:
+        with open(f'pkl_data/{study_path}.pkl', 'wb') as f:
             pickle.dump(optuna_studies, f)
-        print('Optuna study saved to pkl_data/optuna_studies')
+        print(f'Optuna study saved to pkl_data/{study_path}')
 
 
 if __name__ == "__main__":
