@@ -1169,7 +1169,7 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                'ojas_dend_learned_bias': 0.01,
                'ojas_dend_zero_bias': 0.02,
                'ojas_dend_fixed_bias': 0.0069,
-               'dend_EI_contrast_learned_bias': 0.101,
+               'dend_EI_contrast_learned_bias': 0.03754852384680391,
                'dend_EI_contrast_zero_bias': 0.179,
                'dend_EI_contrast_fixed_bias': 0.04576}
     
@@ -1195,8 +1195,9 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
             extra_params['beta'] = 1.2165
     elif "dend_EI_contrast" in description:
         if "learned_bias" in description:
-            extra_params['rec_lr_H1'] = 0.05
-            extra_params['rec_lr_H2'] = 0.05
+            extra_params['rec_lr_H1'] = 0.10258729000918422
+            extra_params['rec_lr_H2'] = 0.03800250069518263
+            # TODO maybe different lr for biases vs weights
         elif "zero_bias" in description:
             extra_params['rec_lr_H1'] = 0.05
             extra_params['rec_lr_H2'] = 0.05
