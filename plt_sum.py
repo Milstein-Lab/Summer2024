@@ -50,11 +50,11 @@ def plot_averaged_results(description, export_file_path):
                      average_train_accuracies + std_train_accuracies, alpha=0.2)
 
     # Colors!
-    seed_colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray',
-                   'tab:olive', 'tab:cyan']
-    for idx, (seed, result) in enumerate(results.items()):
-        color = seed_colors[idx % len(seed_colors)]
-        plt.plot(train_steps_list, result.train_accuracy, 'o', color=color, label=f'Seed {seed}', markersize=2)
+    # seed_colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray',
+    #                'tab:olive', 'tab:cyan']
+    # for idx, (seed, result) in enumerate(results.items()):
+    #     color = seed_colors[idx % len(seed_colors)]
+    #     plt.plot(train_steps_list, result.train_accuracy, 'o', color=color, label=f'Seed {seed}', markersize=2)
 
     # Annotations/accuracy readings
     plt.annotate(f"Avg Val Acc: {average_val_acc:.2f}%", xy=(0.95, 0.9), xycoords='axes fraction', color='blue')
@@ -84,14 +84,14 @@ def plot_averaged_results(description, export_file_path):
                      average_train_accuracies + std_train_accuracies, alpha=0.2)
 
     # Colors
-    seed_colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray',
-                   'tab:olive', 'tab:cyan']
-    for idx, (seed, result) in enumerate(results.items()):
-        color = seed_colors[idx % len(seed_colors)]
-        plt.plot(train_steps_list, result.train_accuracy, 'o', color=color, label=f'Seed {seed}', markersize=2)
-
-    plt.annotate(f"Avg Val Acc: {average_val_acc:.2f}%", xy=(0.95, 0.9), xycoords='axes fraction', color='blue')
-    plt.annotate(f"Avg Test Acc: {average_test_acc:.2f}%", xy=(0.95, 0.85), xycoords='axes fraction', color='orange')
+    # seed_colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray',
+    #                'tab:olive', 'tab:cyan']
+    # for idx, (seed, result) in enumerate(results.items()):
+    #     color = seed_colors[idx % len(seed_colors)]
+    #     plt.plot(train_steps_list, result.train_accuracy, 'o', color=color, label=f'Seed {seed}', markersize=2)
+    #
+    # plt.annotate(f"Avg Val Acc: {average_val_acc:.2f}%", xy=(0.95, 0.9), xycoords='axes fraction', color='blue')
+    # plt.annotate(f"Avg Test Acc: {average_test_acc:.2f}%", xy=(0.95, 0.85), xycoords='axes fraction', color='orange')
 
     plt.xlabel('Train Steps')
     plt.ylabel('Accuracy (%)')
@@ -104,9 +104,9 @@ def plot_averaged_results(description, export_file_path):
     plt.fill_between(train_steps_list, average_train_losses - std_train_losses, average_train_losses + std_train_losses,
                      alpha=0.2)
 
-    for idx, (seed, result) in enumerate(results.items()):
-        color = seed_colors[idx % len(seed_colors)]
-        plt.plot(train_steps_list, result.avg_loss, 'o', color=color, label=f'Seed {seed}', markersize=2)
+    # for idx, (seed, result) in enumerate(results.items()):
+    #     color = seed_colors[idx % len(seed_colors)]
+    #     plt.plot(train_steps_list, result.avg_loss, 'o', color=color, label=f'Seed {seed}', markersize=2)
 
     plt.xlabel('Train Steps')
     plt.ylabel('Loss')

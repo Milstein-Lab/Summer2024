@@ -82,7 +82,7 @@ def main(description, num_trials, export, export_file_path):
     print(f"  Val Accuracy: {best_trial.value}")
     print("  Params: ")
     for key, value in best_trial.params.items():
-        print(f"    {key}: {value:.6f}")
+        print(f"    {key}: {value}")
         best_params_dict[key] = value
 
     # Plotting
@@ -97,7 +97,7 @@ def main(description, num_trials, export, export_file_path):
         xaxis_title="Trial",
         yaxis_title='Accuracy'
     )
-    best_params_text = "\n".join([f"Best {key}: {value:.4f}" for key, value in best_params_dict.items()])
+    best_params_text = "\n".join([f"Best {key}: {value}" for key, value in best_params_dict.items()])
     fig.add_annotation(
         text=best_params_text,
         xref="paper",
