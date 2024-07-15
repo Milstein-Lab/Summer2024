@@ -16,7 +16,7 @@ def objective(trial, config, base_seed, db_path):
     # Initialize extra_params with suggested values
     extra_params = {}
     for param, (low, high) in param_ranges.items():
-        extra_params[param] = trial.suggest_float(param, low, high)
+        extra_params[param] = trial.suggest_float(param, low, high, log=True)
 
     val_accuracies, _ = eval_model_multiple_seeds(
         lr=learning_rate, 
@@ -99,9 +99,11 @@ def main(description, num_trials, export, export_file_path, num_seeds, num_cores
         hidden_units = config['hidden_units']
         for i in range(len(hidden_units)):
             rec_layer_key = f'rec_lr_H{i+1}'
-            config["param_ranges"][rec_layer_key] = (1e-5, 2)
+            config["param_ranges"][rec_layer_key] = (1e-5, 1)
 
     base_seed = 0
+
+    study_db_path = f'sqlite:///screen_data/{description}_optuna_study.db'
 
     os.makedirs("screen_data", exist_ok=True)
     db_path = f"screen_data/{description}_optimization_results.db"
@@ -120,7 +122,7 @@ def main(description, num_trials, export, export_file_path, num_seeds, num_cores
         """)
         conn.commit()
 
-    study = optuna.create_study(study_name=f'{description}_Optimization', direction="maximize")
+    study = optuna.create_study(study_name=f'{description}_Optimization', direction="maximize", storage=study_db_path, load_if_exists=True)
     study.optimize(lambda trial: objective(trial, config, base_seed, db_path), n_trials=num_trials)
 
     print("Best trial:")

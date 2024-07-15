@@ -752,12 +752,12 @@ class Net(nn.Module):
         axes[1][0].plot(self.train_steps_list, self.train_accuracy, label=f"Test Accuracy: {self.test_acc:.3f}\nVal Accuracy: {self.val_acc:.3f}")
         axes[1][0].set_xlabel('Train Steps')
         axes[1][0].set_ylabel('Accuracy (%)')
-        axes[1][0].legend(loc='best', frameon=False)
+        axes[1][0].legend(loc='best', frameon=False, handlelength=0)
 
         axes[1][1].plot(self.train_steps_list, self.avg_loss, label=f'Final Loss: {self.final_loss:.3f}')
         axes[1][1].set_xlabel('Train Steps')
         axes[1][1].set_ylabel('Loss')
-        axes[1][1].legend(loc='best', frameon=False)
+        axes[1][1].legend(loc='best', frameon=False, handlelength=0)
 
         # map = self.get_decision_map()
         # axes[1][2].imshow(map, extent=[-2, 2, -2, 2], origin='lower', cmap='coolwarm', alpha=0.7)
