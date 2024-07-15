@@ -64,8 +64,12 @@ def main(description, num_trials, export, export_file_path, num_seeds, num_cores
     # Populate param_ranges based on description
     if "ojas_dend" in description:
         config["param_ranges"] = {
-            "alpha": (1e-5, 2),
-            "beta": (1e-5, 2)
+            "alpha_Out": (1e-5, 2),
+            "alpha_H2":(1e-5, 2),
+            "alpha_H1":(1e-5, 2),
+            "beta_Out": (1e-5, 2),
+            "beta_H2":(1e-5, 2),
+            "beta_H1":(1e-5, 2),
         }
     elif "dend_EI_contrast" in description:
         hidden_units = config['hidden_units']
