@@ -103,6 +103,7 @@ def main(description, num_trials, export, export_file_path, num_seeds, num_cores
 
     base_seed = 0
 
+    os.makedirs("screen_data", exist_ok=True)
     db_path = f"screen_data/{description}_optimization_results.db"
     with sqlite3.connect(db_path) as conn:
         c = conn.cursor()
