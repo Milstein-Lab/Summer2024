@@ -470,6 +470,19 @@ class Net(nn.Module):
                 self.backward_activity[layer] = self.activation_functions[layer](self.forward_soma_state[layer] + self.nudges[layer])
                 prev_layer = layer
 
+    def step_dend_temp_contrast(self):
+        # add beta scalars?
+        with torch.no_grad():
+            lr = self.lr
+            with torch.no_grad():
+                prev_layer = 'Input'
+                for layer in self.layers.keys():
+                    self.weights[layer].data += lr * torch.outer(self.nudges[layer].squeeze(),
+                                                                self.forward_activity[prev_layer].squeeze())
+                    if self.use_bias and self.learn_bias:
+                        self.biases[layer].data += lr * self.nudges[layer].squeeze()
+                    prev_layer = layer
+
     def backward_ojas(self, targets):
         with torch.no_grad():
             beta_Out = self.extra_params['beta_Out']
@@ -497,19 +510,6 @@ class Net(nn.Module):
                 self.backward_activity[layer] = self.activation_functions[layer](
                     self.forward_soma_state[layer] + self.nudges[layer])
                 prev_layer = layer
-    
-    def step_dend_temp_contrast(self):
-        # add beta scalars?
-        with torch.no_grad():
-            lr = self.lr
-            with torch.no_grad():
-                prev_layer = 'Input'
-                for layer in self.layers.keys():
-                    self.weights[layer].data += lr * torch.outer(self.nudges[layer].squeeze(),
-                                                                self.forward_activity[prev_layer].squeeze())
-                    if self.use_bias and self.learn_bias:
-                        self.biases[layer].data += lr * self.nudges[layer].squeeze()
-                    prev_layer = layer
     
     def step_ojas(self):
         with torch.no_grad():
@@ -558,10 +558,10 @@ class Net(nn.Module):
         with torch.no_grad():
             lr = self.lr
             lower_layer = 'Input'
-            for idx, layer in enumerate (self.layers.keys()):
+            for idx, layer in enumerate(self.layers.keys()):
                 if layer != 'Out':
                     rec_lr_key = f'rec_lr_H{idx+1}'
-                    rec_lr = self.extra_params.get(rec_lr_key, self.lr)
+                    rec_lr = self.extra_params[rec_lr_key]
 
                 self.weights[layer].data += lr * torch.outer(self.nudges[layer].squeeze(), torch.clamp(self.forward_activity[lower_layer].squeeze(), 0., 1.))
                 
@@ -1064,6 +1064,7 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
     # List of base seeds
     seeds = [base_seed + seed_offset * 10 for seed_offset in range(num_seeds)]
     
+    # TODO figure out why i get this error: OSError: [WinError 1450] Insufficient system resources exist to complete the requested service (memory problem?)
     if num_cores > 1:
         results = Parallel(n_jobs=num_cores)(delayed(evaluate_model)(seed, num_input_units=num_input_units, hidden_units=hidden_units, num_classes=num_classes, 
                                      description=description, lr=lr, num_train_steps=num_train_steps, debug=debug, 
