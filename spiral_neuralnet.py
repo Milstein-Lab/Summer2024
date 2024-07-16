@@ -1138,6 +1138,7 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
             pickle.dump(model_dict, f)
         print(f"Network exported to {model_file_path}")
 
+
     if return_net:
         # Plotting
         if show_plot and test:
@@ -1146,7 +1147,9 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
             seed = seeds[idx]
             plot_title = label_dict[description]
             rep_net.display_summary(model_dict, title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot)
-            rep_net.plot_params(title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot) 
+            rep_net.plot_params(title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot)
+
+
 
 
     if return_net and export:
@@ -1199,7 +1202,7 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                'ojas_dend_learned_bias': 0.01,
                'ojas_dend_zero_bias': 0.02,
                'ojas_dend_fixed_bias':  0.0069,
-               'dend_EI_contrast_learned_bias': 0.101,
+               'dend_EI_contrast_learned_bias': 0.03754852384680391,
                'dend_EI_contrast_zero_bias': 0.179,
                'dend_EI_contrast_fixed_bias': 0.04576}
     
@@ -1219,8 +1222,8 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
             extra_params['beta'] = 1.2165
     elif "dend_EI_contrast" in description:
         if "learned_bias" in description:
-            extra_params['rec_lr_H1'] = 0.05
-            extra_params['rec_lr_H2'] = 0.05
+            extra_params['rec_lr_H1'] = 0.10258729000918422
+            extra_params['rec_lr_H2'] = 0.03800250069518263
         elif "zero_bias" in description:
             extra_params['rec_lr_H1'] = 0.05
             extra_params['rec_lr_H2'] = 0.05
