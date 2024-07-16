@@ -148,7 +148,7 @@ def main(description, num_trials, export, export_file_path, num_seeds, num_cores
         xaxis_title="Trial",
         yaxis_title='Accuracy'
     )
-    best_params_text = "\n".join([f"Best {key}: {value:.4f}" for key, value in best_params_dict.items()])
+    best_params_text = "\n".join([f"Best {key}: {value}" for key, value in best_params_dict.items()])
     fig.add_annotation(
         text=best_params_text,
         xref="paper",
