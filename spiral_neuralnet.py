@@ -486,6 +486,9 @@ class Net(nn.Module):
             beta_Out = self.extra_params['beta_Out']
             beta_H2 = self.extra_params['beta_H2']
             beta_H1 = self.extra_params['beta_H1']
+            #beta_Input = self.extra_params['beta_Input']
+
+
 
             prev_layer = None
             reverse_layers = list(self.layers.keys())[::-1]
@@ -507,18 +510,32 @@ class Net(nn.Module):
                 prev_layer = layer
     
     def step_ojas(self):
-
-        alpha_Out = self.extra_params['alpha_Out']
-        alpha_H2 = self.extra_params['alpha_H2']
-        alpha_H1 = self.extra_params['alpha_H1']
-        #alpha_Input = self.extra_params['alpha_Input']
         with torch.no_grad():
-            prev_layer = 'Input'
-            for layer in self.layers.keys():
-                self.weights[layer].data += (self.lr * self.backward_activity[layer].T * (self.forward_activity_mean_subtracted[prev_layer] - eval(f'alpha_{layer}') * self.backward_activity[layer].T * self.weights[layer].data))
-                if self.use_bias and self.learn_bias:
-                    self.biases[layer].data += self.lr * self.nudges[layer].squeeze()
-                prev_layer = layer
+            if 'lr_Out' in self.extra_params:
+                lr_Out = self.extra_params['lr_Out']
+            else:
+                lr_Out = self.lr
+            if 'lr_H2' in self.extra_params:
+                lr_H2 = self.extra_params['lr_H2']
+            else:
+                lr_H2 = self.lr
+            if 'lr_H1' in self.extra_params:
+                lr_H1 = self.extra_params['lr_H1']
+            else:
+                lr_H1 = self.lr
+            # lr_Input = self.lr
+            alpha_Out = self.extra_params['alpha_Out']
+            alpha_H2 = self.extra_params['alpha_H2']
+            alpha_H1 = self.extra_params['alpha_H1']
+            #alpha_Input = self.extra_params['alpha_Input']
+
+            with torch.no_grad():
+                prev_layer = 'Input'
+                for layer in self.layers.keys():
+                    self.weights[layer].data += (self.lr * self.backward_activity[layer].T * (self.forward_activity_mean_subtracted[prev_layer] - eval(f'alpha_{layer}') * self.backward_activity[layer].T * self.weights[layer].data))
+                    if self.use_bias and self.learn_bias:
+                        self.biases[layer].data += self.lr * self.nudges[layer].squeeze()
+                    prev_layer = layer
     
     def backward_dend_EI_contrast(self, targets):
         with torch.no_grad():
@@ -1213,9 +1230,15 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
             extra_params['alpha_Out'] = 0.0590
             extra_params['alpha_H2'] = 0.2274
             extra_params['alpha_H1'] = 1.2339
+            # extra_params['alpha_Input'] = 0.8469
             extra_params['beta_Out'] = 1.8881
             extra_params['beta_H2'] =  1.2264
             extra_params['beta_H1'] = 1.7417
+            # extra_params['beta_Input'] = 0.8497
+            # extra_params['lr_Out'] = 0.0106
+            # extra_params['lr_H2'] = 0.0106
+            # extra_params['lr_H1'] = 0.0106
+            # # extra_params['lr_Input'] = lr_dict[description]
         if "zero_bias" in description:
             extra_params['alpha'] = 0.6427
             extra_params['beta'] = 1.2165
