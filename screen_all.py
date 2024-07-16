@@ -100,10 +100,11 @@ def main(description, num_trials, export, export_file_path, num_seeds, num_cores
         for i in range(len(hidden_units)):
             rec_layer_key = f'rec_lr_H{i+1}'
             config["param_ranges"][rec_layer_key] = (1e-5, 1)
+        config["param_ranges"]['bias_lr'] = (1e-5, 1)
 
     base_seed = 0
 
-    study_db_path = f'sqlite:///screen_data/{description}_optuna_study.db'
+    study_db_path = f'sqlite:///screen_data/{description}_optimization_results.db' # In trial_results
 
     os.makedirs("screen_data", exist_ok=True)
     db_path = f"screen_data/{description}_optimization_results.db"

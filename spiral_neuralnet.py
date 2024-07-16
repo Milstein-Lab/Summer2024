@@ -486,9 +486,6 @@ class Net(nn.Module):
             beta_Out = self.extra_params['beta_Out']
             beta_H2 = self.extra_params['beta_H2']
             beta_H1 = self.extra_params['beta_H1']
-            #beta_Input = self.extra_params['beta_Input']
-
-
 
             prev_layer = None
             reverse_layers = list(self.layers.keys())[::-1]
@@ -510,32 +507,16 @@ class Net(nn.Module):
                 prev_layer = layer
     
     def step_ojas(self):
+        alpha_Out = self.extra_params['alpha_Out']
+        alpha_H2 = self.extra_params['alpha_H2']
+        alpha_H1 = self.extra_params['alpha_H1']
         with torch.no_grad():
-            if 'lr_Out' in self.extra_params:
-                lr_Out = self.extra_params['lr_Out']
-            else:
-                lr_Out = self.lr
-            if 'lr_H2' in self.extra_params:
-                lr_H2 = self.extra_params['lr_H2']
-            else:
-                lr_H2 = self.lr
-            if 'lr_H1' in self.extra_params:
-                lr_H1 = self.extra_params['lr_H1']
-            else:
-                lr_H1 = self.lr
-            # lr_Input = self.lr
-            alpha_Out = self.extra_params['alpha_Out']
-            alpha_H2 = self.extra_params['alpha_H2']
-            alpha_H1 = self.extra_params['alpha_H1']
-            #alpha_Input = self.extra_params['alpha_Input']
-
-            with torch.no_grad():
-                prev_layer = 'Input'
-                for layer in self.layers.keys():
-                    self.weights[layer].data += (self.lr * self.backward_activity[layer].T * (self.forward_activity_mean_subtracted[prev_layer] - eval(f'alpha_{layer}') * self.backward_activity[layer].T * self.weights[layer].data))
-                    if self.use_bias and self.learn_bias:
-                        self.biases[layer].data += self.lr * self.nudges[layer].squeeze()
-                    prev_layer = layer
+            prev_layer = 'Input'
+            for layer in self.layers.keys():
+                self.weights[layer].data += (self.lr * self.backward_activity[layer].T * (self.forward_activity_mean_subtracted[prev_layer] - eval(f'alpha_{layer}') * self.backward_activity[layer].T * self.weights[layer].data))
+                if self.use_bias and self.learn_bias:
+                    self.biases[layer].data += self.lr * self.nudges[layer].squeeze()
+                prev_layer = layer
     
     def backward_dend_EI_contrast(self, targets):
         with torch.no_grad():
@@ -568,7 +549,7 @@ class Net(nn.Module):
                     self.recurrent_weights[layer].data += -1 * rec_lr * self.forward_dend_state[layer].T @ torch.clamp(self.forward_activity[layer], 0., 1.)
                 
                 if self.use_bias and self.learn_bias:
-                    self.biases[layer].data += lr * self.nudges[layer].squeeze()
+                    self.biases[layer].data += self.extra_params['bias_lr'] * self.nudges[layer].squeeze()
                 
                 lower_layer = layer
 
@@ -751,8 +732,6 @@ class Net(nn.Module):
             axes[0][i].set_xticks(range(this_class_averaged_activity.shape[0]))
             axes[0][i].set_xticklabels(range(this_class_averaged_activity.shape[0]))
 
-
-        #average accuracies and losses with STD shaded
         results = model_dict[self.description]
 
         # Accuracies
@@ -771,8 +750,6 @@ class Net(nn.Module):
 
         average_test_acc = np.mean(all_test_accuracies)
         std_test_acc = np.std(all_test_accuracies)
-
-
 
         # Losses
         all_train_losses = [results[seed].avg_loss for seed in results]
@@ -793,7 +770,6 @@ class Net(nn.Module):
         axes[1][0].legend(loc='best', frameon=False)
 
         # Plotting Losses
-
         axes[1][1].plot(train_steps_list, average_train_losses, '-', label=f'Avg Final Loss: {final_avg_loss:.3f}')
         axes[1][1].fill_between(train_steps_list, average_train_losses - std_train_losses,
                          average_train_losses + std_train_losses,
@@ -802,10 +778,8 @@ class Net(nn.Module):
         axes[1][1].set_ylabel('Loss')
         axes[1][1].legend(loc='best', frameon=False, handlelength=0)
 
-
         # map = self.get_decision_map()
         # axes[1][2].imshow(map, extent=[-2, 2, -2, 2], origin='lower', cmap='coolwarm', alpha=0.7)
-
 
         correct_indices = (predicted_labels == test_labels).nonzero().squeeze()
         axes[1][2].scatter(inputs[correct_indices,0], inputs[correct_indices,1], c=test_labels[correct_indices], s=4)
@@ -1089,8 +1063,8 @@ def evaluate_model(base_seed, num_input_units, hidden_units, num_classes, descri
 
 
 def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, num_input_units, hidden_units, num_classes, export,
-                              export_file_path, show_plot, png_save_path, svg_save_path, label_dict, debug,
-                              num_train_steps, test=True, extra_params=None, verbose=True, return_net=False, **kwargs):
+                              export_file_path, show_plot, png_save_path, svg_save_path, label_dict, debug, num_train_steps, 
+                              test=True, extra_params=None, verbose=True, return_net=False, interactive=False, **kwargs):
     
     # Determine number of available cores
     if num_cores is None:
@@ -1157,7 +1131,7 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
 
     if return_net:
         # Plotting
-        if show_plot and test:
+        if (show_plot and test) or png_save_path or svg_save_path:
             idx = 0
             rep_net = results[0][idx]
             seed = seeds[idx]
@@ -1165,8 +1139,7 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
             rep_net.display_summary(model_dict, title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot)
             rep_net.plot_params(title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot) 
 
-
-    if return_net and export:
+    if return_net and interactive:
         return avg_val_acc, model_dict
     else:
         return avg_val_acc, None
@@ -1216,9 +1189,7 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                'ojas_dend_learned_bias': 0.01,
                'ojas_dend_zero_bias': 0.02,
                'ojas_dend_fixed_bias': 0.0069,
-               'dend_EI_contrast_learned_bias': 0.03754852384680391,
-               'ojas_dend_fixed_bias':  0.0069,
-               'dend_EI_contrast_learned_bias': 0.101,
+               'dend_EI_contrast_learned_bias': 0.07743087422515695,
                'dend_EI_contrast_zero_bias': 0.179,
                'dend_EI_contrast_fixed_bias': 0.04576}
     
@@ -1230,23 +1201,17 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
             extra_params['alpha_Out'] = 0.0590
             extra_params['alpha_H2'] = 0.2274
             extra_params['alpha_H1'] = 1.2339
-            # extra_params['alpha_Input'] = 0.8469
             extra_params['beta_Out'] = 1.8881
             extra_params['beta_H2'] =  1.2264
             extra_params['beta_H1'] = 1.7417
-            # extra_params['beta_Input'] = 0.8497
-            # extra_params['lr_Out'] = 0.0106
-            # extra_params['lr_H2'] = 0.0106
-            # extra_params['lr_H1'] = 0.0106
-            # # extra_params['lr_Input'] = lr_dict[description]
         if "zero_bias" in description:
             extra_params['alpha'] = 0.6427
             extra_params['beta'] = 1.2165
     elif "dend_EI_contrast" in description:
         if "learned_bias" in description:
-            extra_params['rec_lr_H1'] = 0.10258729000918422
-            extra_params['rec_lr_H2'] = 0.03800250069518263
-            # TODO maybe different lr for biases vs weights
+            extra_params['rec_lr_H1'] = 0.5328724772039555
+            extra_params['rec_lr_H2'] = 0.1358131395050747
+            extra_params['bias_lr'] = 0.01869784196670999
         elif "zero_bias" in description:
             extra_params['rec_lr_H1'] = 0.05
             extra_params['rec_lr_H2'] = 0.05
@@ -1270,7 +1235,7 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
     mean_val_accuracy, model_dict = eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, num_input_units, hidden_units, num_classes,
                                                   export, export_file_path, show_plot, png_save_path, svg_save_path,
                                                   label_dict, debug, num_train_steps, test=True, extra_params=extra_params,
-                                                  return_net=True)
+                                                  return_net=True, interactive=interactive)
 
     end_time = time.time()
     total_time = end_time - start_time
