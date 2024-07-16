@@ -1129,6 +1129,7 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
             pickle.dump(model_dict, f)
         print(f"Network exported to {model_file_path}")
 
+
     if return_net:
         # Plotting
         if (show_plot and test) or png_save_path or svg_save_path:
@@ -1137,7 +1138,7 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
             seed = seeds[idx]
             plot_title = label_dict[description]
             rep_net.display_summary(model_dict, title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot)
-            rep_net.plot_params(title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot) 
+            rep_net.plot_params(title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot)
 
     if return_net and interactive:
         return avg_val_acc, model_dict
@@ -1188,7 +1189,7 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                'dend_temp_contrast_fixed_bias': 0.07,
                'ojas_dend_learned_bias': 0.01,
                'ojas_dend_zero_bias': 0.02,
-               'ojas_dend_fixed_bias': 0.0069,
+               'ojas_dend_fixed_bias':  0.005343058244913412,
                'dend_EI_contrast_learned_bias': 0.07743087422515695,
                'dend_EI_contrast_zero_bias': 0.179,
                'dend_EI_contrast_fixed_bias': 0.04576}
@@ -1198,12 +1199,12 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
     extra_params = {}
     if "ojas_dend" in description:
         if "fixed_bias" in description:
-            extra_params['alpha_Out'] = 0.0590
-            extra_params['alpha_H2'] = 0.2274
-            extra_params['alpha_H1'] = 1.2339
-            extra_params['beta_Out'] = 1.8881
-            extra_params['beta_H2'] =  1.2264
-            extra_params['beta_H1'] = 1.7417
+            extra_params['alpha_Out'] = 0.0004287170878786786
+            extra_params['alpha_H2'] = 1.2230827053285747
+            extra_params['alpha_H1'] = 1.1940427904424398
+            extra_params['beta_Out'] = 1.8028835973296262
+            extra_params['beta_H2'] =  1.7074219483394388
+            extra_params['beta_H1'] = 1.3832276201393738
         if "zero_bias" in description:
             extra_params['alpha'] = 0.6427
             extra_params['beta'] = 1.2165
