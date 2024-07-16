@@ -1129,6 +1129,7 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
             pickle.dump(model_dict, f)
         print(f"Network exported to {model_file_path}")
 
+
     if return_net:
         # Plotting
         if (show_plot and test) or png_save_path or svg_save_path:
@@ -1137,7 +1138,7 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
             seed = seeds[idx]
             plot_title = label_dict[description]
             rep_net.display_summary(model_dict, title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot)
-            rep_net.plot_params(title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot) 
+            rep_net.plot_params(title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot)
 
     if return_net and interactive:
         return avg_val_acc, model_dict
