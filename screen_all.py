@@ -132,6 +132,7 @@ def main(description, plot, num_trials, export, export_dir, make_db, restart, nu
         study = optuna.create_study(study_name=f'{description}_Optimization', direction="maximize", storage=study_db_path, load_if_exists=True)
     else:
         study = optuna.create_study(study_name=f'{description}_Optimization', direction="maximize")
+        db_path = None
     study.optimize(lambda trial: objective(trial, config, base_seed, make_db, db_path), n_trials=num_trials)
 
     print("Best trial:")
