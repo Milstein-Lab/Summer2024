@@ -760,24 +760,29 @@ class Net(nn.Module):
         final_avg_loss = average_train_losses[-1]
         std_train_losses = np.std(all_train_losses, axis=0)
 
+        avg_or_not = "Avg"
+        if len(all_train_accuracies) == 1:
+            avg_or_not = ""
+
         # Plotting Accuracies
-        axes[1][0].plot(train_steps_list, average_train_accuracies, '-', label=f"Avg Test Acc: {average_test_acc:.3f}\nAvg Val Acc: {average_val_acc:.3f}")
+        axes[1][0].plot(train_steps_list, average_train_accuracies, '-', label=f"{avg_or_not} Test Accuracy: {average_test_acc:.3f}\n{avg_or_not} Validation Accuracy: {average_val_acc:.3f}")
         axes[1][0].fill_between(train_steps_list, average_train_accuracies - std_train_accuracies,
                          average_train_accuracies + std_train_accuracies, alpha=0.2)
 
         axes[1][0].set_xlabel('Train Steps')
         axes[1][0].set_ylabel('Accuracy (%)')
-        axes[1][0].legend(loc='best', frameon=False)
+        axes[1][0].legend(loc='best', frameon=False, handlelength=0, fontsize='small')
 
         # Plotting Losses
-        axes[1][1].plot(train_steps_list, average_train_losses, '-', label=f'Avg Final Loss: {final_avg_loss:.3f}')
+        axes[1][1].plot(train_steps_list, average_train_losses, '-', label=f'{avg_or_not} Final Loss: {final_avg_loss:.3f}')
         axes[1][1].fill_between(train_steps_list, average_train_losses - std_train_losses,
                          average_train_losses + std_train_losses,
                          alpha=0.2)
         axes[1][1].set_xlabel('Train Steps')
         axes[1][1].set_ylabel('Loss')
-        axes[1][1].legend(loc='best', frameon=False, handlelength=0)
+        axes[1][1].legend(loc='best', frameon=False, handlelength=0, fontsize='small')
 
+        # # Old decision map code
         # map = self.get_decision_map()
         # axes[1][2].imshow(map, extent=[-2, 2, -2, 2], origin='lower', cmap='coolwarm', alpha=0.7)
 
