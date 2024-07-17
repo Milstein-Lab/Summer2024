@@ -13,6 +13,7 @@ import sys
 import os
 from os import cpu_count
 import click
+import multiprocessing
 from joblib import Parallel, delayed
 import traceback
 import time
@@ -1106,7 +1107,8 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
     }
 
     if num_cores > 1:
-        results = Parallel(n_jobs=num_cores)(delayed(evaluate_model)(seed, **eval_params) for seed in seeds)
+        multiprocessing.set_start_method('spawn', force=True)
+        results = Parallel(n_jobs=num_cores, backend='multiprocessing')(delayed(evaluate_model)(seed, **eval_params) for seed in seeds)
     else:
         # Run without multiprocessing
         results = [evaluate_model(seed, **eval_params) for seed in seeds]
