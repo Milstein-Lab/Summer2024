@@ -60,9 +60,10 @@ def objective(trial, config, base_seed, make_db, db_path):
 @click.option('--export_dir', type=click.Path(file_okay=True), default='.')
 @click.option('--make_db', is_flag=True)
 @click.option('--restart', is_flag=True)
+@click.option('--debug', is_flag=True)
 @click.option('--num_seeds', type=int, default=5)
 @click.option('--num_cores', type=int, default=None)
-def main(description, plot, num_trials, export, export_dir, make_db, restart, num_seeds, num_cores):
+def main(description, plot, num_trials, export, export_dir, make_db, restart, debug, num_seeds, num_cores):
     
     if num_cores is None:
         num_cores = min(cpu_count(), num_seeds)
@@ -75,7 +76,7 @@ def main(description, plot, num_trials, export, export_dir, make_db, restart, nu
         "num_input_units": 2,
         "hidden_units": [128, 32],
         "num_classes": 4,
-        "debug": False,
+        "debug": debug,
         "num_train_steps": None,
         "show_plot": False,
         "png_save_path": None,
