@@ -351,7 +351,8 @@ class Net(nn.Module):
         self.train_labels = []
         self.predicted_labels = []
     
-    def train_model(self, description, train_loader, val_loader, debug=False, num_train_steps=None, num_epochs=1, verbose=False, device='cpu'):
+    def train_model(self, description, train_loader, val_loader, debug=False, num_train_steps=None, num_epochs=1,
+                    verbose=False, device='cpu', status_bar=True):
         """
         Train model with backprop, accumulate loss, evaluate performance
     
@@ -364,6 +365,7 @@ class Net(nn.Module):
         - num_epochs (int): Number of epochs [default: 1]
         - verbose (boolean): If True, print statistics
         - device (string): CUDA/GPU if available, CPU otherwise
+        - status_bar: bool
     
         Returns:
         - val_acc (int): Accuracy of model on train data
@@ -373,9 +375,13 @@ class Net(nn.Module):
         self.reinit()
         train_step = 0
         criterion_function = eval(f"nn.MSELoss()")
-
+        if status_bar:
+            train_loader_iter = tqdm(train_loader)
+        else:
+            train_loader_iter = train_loader
+        
         for epoch in range(num_epochs):  # Loop over the dataset multiple times
-            for data in tqdm(train_loader):
+            for data in train_loader_iter:
                 # Get the inputs; data is a list of [input, label]
                 input, label = data
                 input = input.to(device).float()
@@ -996,9 +1002,9 @@ def generate_data(K=4, sigma=0.16, N=2000, seed=None, gen=None, display=False, p
     
     return X_test, y_test, X_train, y_train, X_val, y_val, test_loader, train_loader, val_loader
 
-def evaluate_model(base_seed, num_input_units, hidden_units, num_classes, description, lr, debug, num_train_steps, show_plot=False, 
-                   png_save_path=None, svg_save_path=None, test=False, plot_example_seed=None, extra_params=None, return_net=False,
-                   export=False):
+def evaluate_model(base_seed, num_input_units, hidden_units, num_classes, description, lr, debug, num_train_steps,
+                   show_plot=False, png_save_path=None, svg_save_path=None, test=False, plot_example_seed=None,
+                   extra_params=None, return_net=False, export=False, status_bar=True):
     
     num_epochs = 1
     data_split_seed = 0
@@ -1037,10 +1043,12 @@ def evaluate_model(base_seed, num_input_units, hidden_units, num_classes, descri
               mean_subtract_input=mean_subtract_input, seed=network_seed).to(DEVICE)
 
     if debug:
-        net.register_hooks()
+        # net.register_hooks()
         try:
+            current_time = time.time()
             net.train_model(description, train_loader, val_loader, debug=debug, num_train_steps=num_train_steps,
-                        num_epochs=num_epochs, device=DEVICE)
+                        num_epochs=num_epochs, device=DEVICE, status_bar=status_bar)
+            print(os.getpid(), 'took %.3f s to train' % (time.time() - current_time))
         except AssertionError:
             print(f"{num_train_steps} train steps completed.")
         except Exception as e:
@@ -1068,9 +1076,10 @@ def evaluate_model(base_seed, num_input_units, hidden_units, num_classes, descri
         return None, val_acc, final_val_loss, test_acc
 
 
-def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, num_input_units, hidden_units, num_classes, export,
-                              export_file_path, show_plot, png_save_path, svg_save_path, label_dict, debug, num_train_steps, 
-                              test=True, extra_params=None, verbose=True, return_net=False, interactive=False, **kwargs):
+def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, num_input_units, hidden_units,
+                              num_classes, export, export_file_path, show_plot, png_save_path, svg_save_path,
+                              label_dict, debug, num_train_steps, test=True, extra_params=None, verbose=True,
+                              return_net=False, interactive=False, status_bar=True, **kwargs):
     
     # Determine number of available cores
     if num_cores is None:
@@ -1103,7 +1112,8 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
         'plot_example_seed': base_seed,
         'extra_params': extra_params,
         'return_net': return_net,
-        'export': export
+        'export': export,
+        'status_bar': status_bar
     }
 
     if num_cores > 1:

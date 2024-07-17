@@ -7,7 +7,7 @@ sbatch <<EOT
 #SBATCH -J $JOB_NAME
 #SBATCH -o /scratch1/06441/aaronmil/logs/spiral/$JOB_NAME.%j.o
 #SBATCH -e /scratch1/06441/aaronmil/logs/spiral/$JOB_NAME.%j.e
-#SBATCH -p dev
+#SBATCH -p development
 #SBATCH -N 1
 #SBATCH -n 1
 #SBATCH -t 1:00:00
@@ -18,6 +18,6 @@ set -x
 
 cd $WORK2/Summer2024
 
-ibrun -n 1 python --description=$DESCRIPTION --num_trials=1 --export_dir=$SCRATCH/data/spiral \
-  --export --make_db
+ibrun -n 1 python screen_all.py --description=$DESCRIPTION --num_trials=5 --export_dir=$SCRATCH/data/spiral \
+  --export --make_db --debug --status_bar=False
 EOT

@@ -2,7 +2,6 @@ import optuna
 import sqlite3
 from spiral_neuralnet import *
 
-start_time = time.time()
 
 def objective(trial, config, base_seed, make_db, db_path):
     trial_start_time = time.time()
@@ -61,9 +60,12 @@ def objective(trial, config, base_seed, make_db, db_path):
 @click.option('--make_db', is_flag=True)
 @click.option('--restart', is_flag=True)
 @click.option('--debug', is_flag=True)
+@click.option('--status_bar', type=bool, default=True)
 @click.option('--num_seeds', type=int, default=5)
 @click.option('--num_cores', type=int, default=None)
-def main(description, plot, num_trials, export, export_dir, make_db, restart, debug, num_seeds, num_cores):
+def main(description, plot, num_trials, export, export_dir, make_db, restart, debug, status_bar, num_seeds, num_cores):
+    
+    start_time = time.time()
     
     if num_cores is None:
         num_cores = min(cpu_count(), num_seeds)
@@ -86,6 +88,7 @@ def main(description, plot, num_trials, export, export_dir, make_db, restart, de
         "param_ranges": {},
         "num_seeds": num_seeds,
         "num_cores": num_cores,
+        "status_bar": status_bar,
         "label_dict": {}
     }
 
@@ -253,11 +256,10 @@ def main(description, plot, num_trials, export, export_dir, make_db, restart, de
         with open(study_path, 'wb') as f:
             pickle.dump(optuna_studies, f)
         print(f'Optuna study saved to {study_path}')
-
+    
+    end_time = time.time()
+    total_time = end_time - start_time
+    print(f"Total execution time: {total_time:.3f} seconds")
 
 if __name__ == "__main__":
     main(standalone_mode=False)
-
-end_time = time.time()
-total_time = end_time - start_time
-print(f"Total execution time: {total_time:.3f} seconds")
