@@ -18,7 +18,7 @@ def load_models(description, export_file_path):
         return None
 
 
-def plot_averaged_results(description, export_file_path):
+def plot_averaged_results(description, export_file_path, save_path=None):
     model_dict = load_models(description, export_file_path)
     if model_dict is None:
         return
@@ -50,11 +50,11 @@ def plot_averaged_results(description, export_file_path):
                      average_train_accuracies + std_train_accuracies, alpha=0.2)
 
     # Colors!
-    seed_colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray',
-                   'tab:olive', 'tab:cyan']
-    for idx, (seed, result) in enumerate(results.items()):
-        color = seed_colors[idx % len(seed_colors)]
-        plt.plot(train_steps_list, result.train_accuracy, 'o', color=color, label=f'Seed {seed}', markersize=2)
+    # seed_colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray',
+    #                'tab:olive', 'tab:cyan']
+    # for idx, (seed, result) in enumerate(results.items()):
+    #     color = seed_colors[idx % len(seed_colors)]
+    #     plt.plot(train_steps_list, result.train_accuracy, 'o', color=color, label=f'Seed {seed}', markersize=2)
 
     # Annotations/accuracy readings
     plt.annotate(f"Avg Val Acc: {average_val_acc:.2f}%", xy=(0.95, 0.9), xycoords='axes fraction', color='blue')
@@ -66,7 +66,12 @@ def plot_averaged_results(description, export_file_path):
 
     plt.title(f'Averaged Results for {description}')
     plt.tight_layout()
-    plt.show(block=False)
+
+    if save_path:
+        os.makedirs(save_path, exist_ok=True)
+        plt.savefig(os.path.join(save_path, f"{description}_averaged_accuracy.png"))
+    else:
+        plt.show(block=False)
 
     # Losses
     all_train_losses = [results[seed].avg_loss for seed in results]
@@ -84,14 +89,14 @@ def plot_averaged_results(description, export_file_path):
                      average_train_accuracies + std_train_accuracies, alpha=0.2)
 
     # Colors
-    seed_colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray',
-                   'tab:olive', 'tab:cyan']
-    for idx, (seed, result) in enumerate(results.items()):
-        color = seed_colors[idx % len(seed_colors)]
-        plt.plot(train_steps_list, result.train_accuracy, 'o', color=color, label=f'Seed {seed}', markersize=2)
-
-    plt.annotate(f"Avg Val Acc: {average_val_acc:.2f}%", xy=(0.95, 0.9), xycoords='axes fraction', color='blue')
-    plt.annotate(f"Avg Test Acc: {average_test_acc:.2f}%", xy=(0.95, 0.85), xycoords='axes fraction', color='orange')
+    # seed_colors = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red', 'tab:purple', 'tab:brown', 'tab:pink', 'tab:gray',
+    #                'tab:olive', 'tab:cyan']
+    # for idx, (seed, result) in enumerate(results.items()):
+    #     color = seed_colors[idx % len(seed_colors)]
+    #     plt.plot(train_steps_list, result.train_accuracy, 'o', color=color, label=f'Seed {seed}', markersize=2)
+    #
+    # plt.annotate(f"Avg Val Acc: {average_val_acc:.2f}%", xy=(0.95, 0.9), xycoords='axes fraction', color='blue')
+    # plt.annotate(f"Avg Test Acc: {average_test_acc:.2f}%", xy=(0.95, 0.85), xycoords='axes fraction', color='orange')
 
     plt.xlabel('Train Steps')
     plt.ylabel('Accuracy (%)')
@@ -104,24 +109,34 @@ def plot_averaged_results(description, export_file_path):
     plt.fill_between(train_steps_list, average_train_losses - std_train_losses, average_train_losses + std_train_losses,
                      alpha=0.2)
 
-    for idx, (seed, result) in enumerate(results.items()):
-        color = seed_colors[idx % len(seed_colors)]
-        plt.plot(train_steps_list, result.avg_loss, 'o', color=color, label=f'Seed {seed}', markersize=2)
+    # for idx, (seed, result) in enumerate(results.items()):
+    #     color = seed_colors[idx % len(seed_colors)]
+    #     plt.plot(train_steps_list, result.avg_loss, 'o', color=color, label=f'Seed {seed}', markersize=2)
 
     plt.xlabel('Train Steps')
     plt.ylabel('Loss')
     plt.legend(loc='best', frameon=False)
 
     plt.tight_layout()
-    plt.show(block=False)
-def plot_example_seed(description, example_seed, export_file_path):
+
+    if save_path:
+        plt.savefig(os.path.join(save_path, f"{description}_averaged_loss.png"))
+    else:
+        plt.show(block=False)
+
+def plot_example_seed(description, example_seed, export_file_path, save_path=None):
     model_dict = load_models(description, export_file_path)
     if model_dict is None:
         return
     net = model_dict[description][example_seed]
     title = description
-    net.plot_params(title=title, seed=example_seed, show_plot=True)
-    net.display_summary(title = title, seed=example_seed, show_plot=True)
+    if save_path:
+        os.makedirs(save_path, exist_ok=True)
+        net.plot_params(title=title, seed=example_seed, show_plot=False, png_save_path=save_path)
+        net.display_summary(model_dict, title=title, seed=example_seed, show_plot=False, png_save_path=save_path)
+    else:
+        net.plot_params(title=title, seed=example_seed, show_plot=True)
+        net.display_summary(model_dict, title=title, seed=example_seed, show_plot=True)
 
 
 @click.command()
@@ -129,9 +144,11 @@ def plot_example_seed(description, example_seed, export_file_path):
 @click.option('--description', required=True, type=str, help='Description of the model')
 @click.option('--export_file_path', type=click.Path(file_okay=True), default='pkl_data',
               help='Path to the directory containing the exported model pickle files')
-def main(description, example_seed, export_file_path):
-    plot_averaged_results(description, export_file_path)
-    plot_example_seed(description, example_seed, export_file_path)
+@click.option('--save_plot', is_flag=True, help='Save the plots instead of displaying them')
+def main(description, example_seed, export_file_path, save_plot):
+    save_path = 'figures' if save_plot else None
+    plot_averaged_results(description, export_file_path, save_path)
+    plot_example_seed(description, example_seed, export_file_path, save_path)
 
 
 if __name__ == "__main__":

@@ -6,17 +6,16 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
-from tqdm.auto import tqdm
+from tqdm.autonotebook import tqdm
 import random
 import pickle
 import sys
 import os
-import click
 from os import cpu_count
+import click
 from joblib import Parallel, delayed
 import traceback
 import time
-from datetime import datetime
 
 
 # set_seed() and seed_worker()
@@ -174,6 +173,8 @@ class Net(nn.Module):
                 layer = f'H{i+1}'
                 self.recurrent_layers[layer] = nn.Linear(num, num, bias=False)
                 self.recurrent_weights[layer] = self.recurrent_layers[layer].weight
+        elif 'oja' in self.description:
+            self.running_average_len = 600
 
         self.hooked_grads = {}
 
@@ -223,13 +224,12 @@ class Net(nn.Module):
         if 'backprop' in self.description:
             self.optimizer = optim.SGD(self.parameters(), lr=self.lr)
 
-    def forward(self, x, num_samples=100, store=True, testing=True,):
+    def forward(self, x, store=True, testing=True,):
         """
         Simulate forward pass of MLP Network
     
         Args:
         - x (torch.tensor): Input data
-        - num_samples (int): Number of samples
         - store (boolean): If True, store intermediate states and activities of each layer
         - test (boolean): If True, expect full batch to be contained in x
     
@@ -242,7 +242,7 @@ class Net(nn.Module):
         if self.mean_subtract_input:
             if not testing:
                 if self.forward_activity_train_history['Input']:
-                    x = x - torch.mean(torch.stack(self.forward_activity_train_history['Input'][-num_samples:]), dim=0)
+                    x = x - torch.mean(torch.stack(self.forward_activity_train_history['Input'][-self.running_average_len:]), dim=0)
                     self.forward_activity_mean_subtracted['Input'] = x.detach().clone()
                 else:
                     self.forward_activity_mean_subtracted['Input'] = x.detach().clone()
@@ -263,7 +263,7 @@ class Net(nn.Module):
             if self.mean_subtract_input:
                 if not testing:
                     if self.forward_activity_train_history[key]:
-                        x = x - torch.mean(torch.stack(self.forward_activity_train_history[key][-num_samples:]), dim=0)
+                        x = x - torch.mean(torch.stack(self.forward_activity_train_history[key][-self.running_average_len:]), dim=0)
                         self.forward_activity_mean_subtracted[key] = x.detach().clone()
                     else:
                         self.forward_activity_mean_subtracted[key] = x.detach().clone()
@@ -373,8 +373,8 @@ class Net(nn.Module):
         train_step = 0
         criterion_function = eval(f"nn.MSELoss()")
 
-        for epoch in tqdm(range(num_epochs)):  # Loop over the dataset multiple times
-            for i, data in enumerate(train_loader, 0):
+        for epoch in range(num_epochs):  # Loop over the dataset multiple times
+            for data in tqdm(train_loader):
                 # Get the inputs; data is a list of [input, label]
                 input, label = data
                 input = input.to(device).float()
@@ -383,7 +383,7 @@ class Net(nn.Module):
                 self.train_labels.append(label.item())
 
                 # forward pass
-                outputs = self.forward(input, num_samples=100, testing=False)
+                outputs = self.forward(input, testing=False)
                 _, predicted = torch.max(outputs, 1)
                 targets = torch.eye(self.output_feature_num)[label]
 
@@ -486,21 +486,18 @@ class Net(nn.Module):
             beta_Out = self.extra_params['beta_Out']
             beta_H2 = self.extra_params['beta_H2']
             beta_H1 = self.extra_params['beta_H1']
-            # beta_Input = self.extra_params['beta_Input']
-
 
             prev_layer = None
             reverse_layers = list(self.layers.keys())[::-1]
             
             for layer in reverse_layers:
                 if layer == 'Out':
-                    self.nudges[layer] =  beta_Out * self.ReLU_derivative(self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])  # the ReLU derivative term is dA/dz
+                    self.nudges[layer] = beta_Out * self.ReLU_derivative(self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])  # the ReLU derivative term is dA/dz
                     self.nudges_train_history[layer].append(self.nudges[layer])
                 else:
                     self.forward_dend_state[layer] = self.forward_activity[prev_layer] @ self.weights[prev_layer]
                     self.backward_dend_state[layer] = self.backward_activity[prev_layer] @ self.weights[prev_layer]
-                    self.nudges[layer] = eval(f'beta_{layer}') * self.ReLU_derivative(self.forward_soma_state[layer]) * (
-                            self.backward_dend_state[layer] - self.forward_dend_state[layer])
+                    self.nudges[layer] = eval(f'beta_{layer}') * self.ReLU_derivative(self.forward_soma_state[layer]) * (self.backward_dend_state[layer] - self.forward_dend_state[layer])
                     self.forward_dend_state_train_history[layer].append(self.nudges[layer])
                     self.backward_dend_state_train_history[layer].append(self.backward_dend_state[layer])
                     self.nudges_train_history[layer].append(self.nudges[layer])
@@ -510,31 +507,16 @@ class Net(nn.Module):
                 prev_layer = layer
     
     def step_ojas(self):
+        alpha_Out = self.extra_params['alpha_Out']
+        alpha_H2 = self.extra_params['alpha_H2']
+        alpha_H1 = self.extra_params['alpha_H1']
         with torch.no_grad():
-            if 'lr_Out' in self.extra_params:
-                lr_Out = self.extra_params['lr_Out']
-            else:
-                lr_Out = self.lr
-            if 'lr_H2' in self.extra_params:
-                lr_H2 = self.extra_params['lr_H2']
-            else:
-                lr_H2 = self.lr
-            if 'lr_H1' in self.extra_params:
-                lr_H1 = self.extra_params['lr_H1']
-            else:
-                lr_H1 = self.lr
-            # lr_Input = self.lr
-            alpha_Out = self.extra_params['alpha_Out']
-            alpha_H2 = self.extra_params['alpha_H2']
-            alpha_H1 = self.extra_params['alpha_H1']
-            # alpha_Input = self.extra_params['alpha_Input']
-            with torch.no_grad():
-                prev_layer = 'Input'
-                for layer in self.layers.keys():
-                    self.weights[layer].data += (eval(f'lr_{layer}') * self.backward_activity[layer].T * (self.forward_activity_mean_subtracted[prev_layer] - eval(f'alpha_{layer}') * self.backward_activity[layer].T * self.weights[layer].data))
-                    if self.use_bias and self.learn_bias:
-                        self.biases[layer].data += eval(f'lr_{layer}') * self.nudges[layer].squeeze()
-                    prev_layer = layer
+            prev_layer = 'Input'
+            for layer in self.layers.keys():
+                self.weights[layer].data += (self.lr * self.backward_activity[layer].T * (self.forward_activity_mean_subtracted[prev_layer] - eval(f'alpha_{layer}') * self.backward_activity[layer].T * self.weights[layer].data))
+                if self.use_bias and self.learn_bias:
+                    self.biases[layer].data += self.lr * self.nudges[layer].squeeze()
+                prev_layer = layer
     
     def backward_dend_EI_contrast(self, targets):
         with torch.no_grad():
@@ -567,7 +549,7 @@ class Net(nn.Module):
                     self.recurrent_weights[layer].data += -1 * rec_lr * self.forward_dend_state[layer].T @ torch.clamp(self.forward_activity[layer], 0., 1.)
                 
                 if self.use_bias and self.learn_bias:
-                    self.biases[layer].data += lr * self.nudges[layer].squeeze()
+                    self.biases[layer].data += self.extra_params['bias_lr'] * self.nudges[layer].squeeze()
                 
                 lower_layer = layer
 
@@ -694,7 +676,7 @@ class Net(nn.Module):
         decision_map = decision_map.view(M, M)
         return decision_map.T
 
-    def display_summary(self, title=None, seed=None, png_save_path=None, svg_save_path=None, show_plot=False):
+    def display_summary(self, model_dict, title=None, seed=None, png_save_path=None, svg_save_path=None, show_plot=False):
         '''
         Display network summary
 
@@ -750,18 +732,60 @@ class Net(nn.Module):
             axes[0][i].set_xticks(range(this_class_averaged_activity.shape[0]))
             axes[0][i].set_xticklabels(range(this_class_averaged_activity.shape[0]))
 
-        axes[1][0].plot(self.train_steps_list, self.train_accuracy, label=f"Test Accuracy: {self.test_acc:.3f}\nVal Accuracy: {self.val_acc:.3f}")
+        results = model_dict[self.description]
+
+        # Accuracies
+        all_train_accuracies = [results[seed].train_accuracy for seed in results]
+        all_val_accuracies = [results[seed].val_acc for seed in results]
+        all_test_accuracies = [results[seed].test_acc for seed in results]
+
+        train_steps_list = results[next(iter(results))].train_steps_list  # Assuming all have the same train steps
+
+        # Average accuracies and standard deviations
+        average_train_accuracies = np.mean(all_train_accuracies, axis=0)
+        std_train_accuracies = np.std(all_train_accuracies, axis=0)
+
+        average_val_acc = np.mean(all_val_accuracies)
+        std_val_acc = np.std(all_val_accuracies)
+
+        average_test_acc = np.mean(all_test_accuracies)
+        std_test_acc = np.std(all_test_accuracies)
+
+        # Losses
+        all_train_losses = [results[seed].avg_loss for seed in results]
+        train_steps_list = results[next(iter(results))].train_steps_list  # Assuming all have the same train steps
+
+        # Average losses and standard deviations
+        average_train_losses = np.mean(all_train_losses, axis=0)
+        final_avg_loss = average_train_losses[-1]
+        std_train_losses = np.std(all_train_losses, axis=0)
+
+        avg_or_not = "Avg"
+        if len(all_train_accuracies) == 1:
+            avg_or_not = ""
+
+        # Plotting Accuracies
+        axes[1][0].plot(train_steps_list, average_train_accuracies, '-', label=f"{avg_or_not} Test Accuracy: {average_test_acc:.3f}\n{avg_or_not} Validation Accuracy: {average_val_acc:.3f}")
+        axes[1][0].fill_between(train_steps_list, average_train_accuracies - std_train_accuracies,
+                         average_train_accuracies + std_train_accuracies, alpha=0.2)
+
         axes[1][0].set_xlabel('Train Steps')
         axes[1][0].set_ylabel('Accuracy (%)')
-        axes[1][0].legend(loc='best', frameon=False)
+        axes[1][0].legend(loc='best', frameon=False, handlelength=0, fontsize='small')
 
-        axes[1][1].plot(self.train_steps_list, self.avg_loss, label=f'Final Loss: {self.final_loss:.3f}')
+        # Plotting Losses
+        axes[1][1].plot(train_steps_list, average_train_losses, '-', label=f'{avg_or_not} Final Loss: {final_avg_loss:.3f}')
+        axes[1][1].fill_between(train_steps_list, average_train_losses - std_train_losses,
+                         average_train_losses + std_train_losses,
+                         alpha=0.2)
         axes[1][1].set_xlabel('Train Steps')
         axes[1][1].set_ylabel('Loss')
-        axes[1][1].legend(loc='best', frameon=False)
+        axes[1][1].legend(loc='best', frameon=False, handlelength=0, fontsize='small')
 
+        # # Old decision map code
         # map = self.get_decision_map()
         # axes[1][2].imshow(map, extent=[-2, 2, -2, 2], origin='lower', cmap='coolwarm', alpha=0.7)
+
         correct_indices = (predicted_labels == test_labels).nonzero().squeeze()
         axes[1][2].scatter(inputs[correct_indices,0], inputs[correct_indices,1], c=test_labels[correct_indices], s=4)
         wrong_indices = (predicted_labels != test_labels).nonzero().squeeze()
@@ -972,9 +996,10 @@ def generate_data(K=4, sigma=0.16, N=2000, seed=None, gen=None, display=False, p
     return X_test, y_test, X_train, y_train, X_val, y_val, test_loader, train_loader, val_loader
 
 def evaluate_model(base_seed, num_input_units, hidden_units, num_classes, description, lr, debug, num_train_steps, show_plot=False, 
-                   png_save_path=None, svg_save_path=None, test=False, plot_example_seed=None, extra_params=None, return_net=False):
+                   png_save_path=None, svg_save_path=None, test=False, plot_example_seed=None, extra_params=None, return_net=False,
+                   export=False):
     
-    num_epochs = 6
+    num_epochs = 1
     data_split_seed = 0
     network_seed = base_seed + 1
     data_order_seed = base_seed + 2
@@ -987,9 +1012,7 @@ def evaluate_model(base_seed, num_input_units, hidden_units, num_classes, descri
         png_save_path = None
         svg_save_path = None
         
-    if debug:
-        print(os.getpid())
-        sys.stdout.flush()
+    if debug: print(os.getpid()) 
     _, _, _, _, _, _, test_loader, train_loader, val_loader = (
         generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=show_plot,
                       png_save_path=png_save_path, svg_save_path=svg_save_path))
@@ -1045,8 +1068,8 @@ def evaluate_model(base_seed, num_input_units, hidden_units, num_classes, descri
 
 
 def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, num_input_units, hidden_units, num_classes, export,
-                              export_file_path, show_plot, png_save_path, svg_save_path, label_dict, debug,
-                              num_train_steps, test=True, extra_params=None, verbose=True, return_net=False, **kwargs):
+                              export_file_path, show_plot, png_save_path, svg_save_path, label_dict, debug, num_train_steps, 
+                              test=True, extra_params=None, verbose=True, return_net=False, interactive=False, **kwargs):
     
     # Determine number of available cores
     if num_cores is None:
@@ -1064,19 +1087,30 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
     # List of base seeds
     seeds = [base_seed + seed_offset * 10 for seed_offset in range(num_seeds)]
     
+    eval_params = {
+        'num_input_units': num_input_units,
+        'hidden_units': hidden_units,
+        'num_classes': num_classes,
+        'description': description,
+        'lr': lr,
+        'num_train_steps': num_train_steps,
+        'debug': debug,
+        'show_plot': example_show_plot,
+        'png_save_path': png_save_path,
+        'svg_save_path': svg_save_path,
+        'test': test,
+        'plot_example_seed': base_seed,
+        'extra_params': extra_params,
+        'return_net': return_net,
+        'export': export
+    }
+
     if num_cores > 1:
-        results = Parallel(n_jobs=num_cores)(delayed(evaluate_model)(seed, num_input_units=num_input_units, hidden_units=hidden_units, num_classes=num_classes,
-                                     description=description, lr=lr, num_train_steps=num_train_steps, debug=debug, 
-                                     show_plot=example_show_plot, png_save_path=png_save_path, svg_save_path=svg_save_path,
-                                     test=test, plot_example_seed=base_seed, extra_params=extra_params, return_net=return_net) for seed in seeds)
+        results = Parallel(n_jobs=num_cores)(delayed(evaluate_model)(seed, **eval_params) for seed in seeds)
     else:
         # Run without multiprocessing
-        results = [evaluate_model(seed, num_input_units=num_input_units, hidden_units=hidden_units, num_classes=num_classes, 
-                                     description=description, lr=lr, num_train_steps=num_train_steps, debug=debug, 
-                                     show_plot=example_show_plot, png_save_path=png_save_path, svg_save_path=svg_save_path,
-                                     test=test, plot_example_seed=base_seed, extra_params=extra_params, return_net=return_net) for seed in seeds]
-    if debug:
-        print(results)
+        results = [evaluate_model(seed, **eval_params) for seed in seeds]
+
     # Extract and average the metrics 
     val_accuracies = [result[1] for result in results]
     val_losses = [result[2] for result in results]
@@ -1091,26 +1125,26 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
         print(f"Averaged Validation Accuracy: {avg_val_acc:.3f}")
         print(f"Averaged Validation Loss: {avg_val_loss:.3f}")
         sys.stdout.flush()
-    
+
+    model_dict = {description: {seed: results[i][0] for i, seed in enumerate(seeds)}}
+    if export:
+        os.makedirs(export_file_path, exist_ok=True)
+        model_file_path = os.path.join(export_file_path, f"{description}_models.pkl")
+        with open(model_file_path, "wb") as f:
+            pickle.dump(model_dict, f)
+        print(f"Network exported to {model_file_path}")
+
     if return_net:
         # Plotting
-        if show_plot and test:
+        if (show_plot and test) or png_save_path or svg_save_path:
             idx = 0
             rep_net = results[0][idx]
             seed = seeds[idx]
             plot_title = label_dict[description]
-            rep_net.display_summary(title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot)
-            rep_net.plot_params(title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot) 
-                
-        model_dict = {description: {seed: results[i][0] for i, seed in enumerate(seeds)}}
-        if export:
-            os.makedirs(export_file_path, exist_ok=True)
-            model_file_path = os.path.join(export_file_path, f"{description}_models.pkl")
-            with open(model_file_path, "wb") as f:
-                pickle.dump(model_dict, f)
-            print(f"Network exported to {model_file_path}")
+            rep_net.display_summary(model_dict, title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot)
+            rep_net.plot_params(title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot)
 
-    if return_net:
+    if return_net and interactive:
         return avg_val_acc, model_dict
     else:
         return avg_val_acc, None
@@ -1160,7 +1194,7 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                'ojas_dend_learned_bias': 0.01,
                'ojas_dend_zero_bias': 0.02,
                'ojas_dend_fixed_bias': 0.0069,
-               'dend_EI_contrast_learned_bias': 0.101,
+               'dend_EI_contrast_learned_bias': 0.07743087422515695,
                'dend_EI_contrast_zero_bias': 0.179,
                'dend_EI_contrast_fixed_bias': 0.04576}
     
@@ -1172,22 +1206,17 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
             extra_params['alpha_Out'] = 0.0590
             extra_params['alpha_H2'] = 0.2274
             extra_params['alpha_H1'] = 1.2339
-            # extra_params['alpha_Input'] = 0.8469
             extra_params['beta_Out'] = 1.8881
-            extra_params['beta_H2'] = 1.2264
+            extra_params['beta_H2'] =  1.2264
             extra_params['beta_H1'] = 1.7417
-            # extra_params['beta_Input'] = 0.8497
-            # extra_params['lr_Out'] = 0.0106
-            # extra_params['lr_H2'] = 0.0106
-            # extra_params['lr_H1'] = 0.0106
-            # # extra_params['lr_Input'] = lr_dict[description]
         if "zero_bias" in description:
             extra_params['alpha'] = 0.6427
             extra_params['beta'] = 1.2165
     elif "dend_EI_contrast" in description:
         if "learned_bias" in description:
-            extra_params['rec_lr_H1'] = 0.05
-            extra_params['rec_lr_H2'] = 0.05
+            extra_params['rec_lr_H1'] = 0.5328724772039555
+            extra_params['rec_lr_H2'] = 0.1358131395050747
+            extra_params['bias_lr'] = 0.01869784196670999
         elif "zero_bias" in description:
             extra_params['rec_lr_H1'] = 0.05
             extra_params['rec_lr_H2'] = 0.05
@@ -1211,15 +1240,11 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
     mean_val_accuracy, model_dict = eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, num_input_units, hidden_units, num_classes,
                                                   export, export_file_path, show_plot, png_save_path, svg_save_path,
                                                   label_dict, debug, num_train_steps, test=True, extra_params=extra_params,
-                                                  return_net=True)
-
-
-
+                                                  return_net=True, interactive=interactive)
 
     end_time = time.time()
     total_time = end_time - start_time
-    if debug:
-        print(f"Total execution time: {total_time:.3f} seconds")
+    if debug: print(f"Total execution time: {total_time:.3f} seconds")
 
     if interactive:
         globals().update(locals())

@@ -1,6 +1,7 @@
 *.pkl
 *.png
 *.svg
+*.db
 __pycache__
 .idea
 data
