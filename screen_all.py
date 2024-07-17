@@ -134,7 +134,9 @@ def main(description, plot, num_trials, export, export_dir, make_db, restart, de
     else:
         study = optuna.create_study(study_name=f'{description}_Optimization', direction="maximize")
         db_path = None
-    study.optimize(lambda trial: objective(trial, config, base_seed, make_db, db_path), n_trials=num_trials)
+    from functools import partial
+    wrapped_objective = partial(objective, config=config, base_seed=base_seed, make_db=make_db, db_path=db_path)
+    study.optimize(wrapped_objective, n_trials=num_trials)
 
     print("Best trial:")
     best_trial = study.best_trial
