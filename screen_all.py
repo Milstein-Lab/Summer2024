@@ -116,7 +116,7 @@ def main(description, plot, num_trials, export, export_dir, make_db, restart, de
         study_db_path = f'sqlite:///{db_dir}/{description}_optimization_results.db' # In trial_results
         os.makedirs(db_dir, exist_ok=True)
         db_path = f"{db_dir}/{description}_optimization_results.db"
-        if restart:
+        if restart and os.path.exists(db_path):
             os.remove(db_path)
         with sqlite3.connect(db_path) as conn:
             c = conn.cursor()
