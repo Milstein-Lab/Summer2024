@@ -169,12 +169,12 @@ class Net(nn.Module):
         
         self.recurrent_layers = {}
         self.recurrent_weights = {}
-        if 'dend_EI_contrast' in self.description:
+        if 'EI' in self.description:
             for i, num in enumerate(self.hidden_unit_nums):
                 layer = f'H{i+1}'
                 self.recurrent_layers[layer] = nn.Linear(num, num, bias=False)
                 self.recurrent_weights[layer] = self.recurrent_layers[layer].weight
-        elif 'oja' in self.description:
+        if 'ojas' in self.description:
             self.running_average_len = 600
 
         self.hooked_grads = {}
@@ -442,16 +442,16 @@ class Net(nn.Module):
 
         return val_acc
     
-    def train_backprop(self, loss):
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
-
     def ReLU_derivative(self, x):
         output = torch.ones_like(x)
         indexes = torch.where(x <= 0)
         output[indexes] = 0
         return output
+    
+    def train_backprop(self, loss):
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
 
     def backward_dend_temp_contrast(self, targets):
         with torch.no_grad():
@@ -476,7 +476,6 @@ class Net(nn.Module):
                 prev_layer = layer
 
     def step_dend_temp_contrast(self):
-        # add beta scalars?
         with torch.no_grad():
             lr = self.lr
             with torch.no_grad():
@@ -509,8 +508,7 @@ class Net(nn.Module):
                     self.backward_dend_state_train_history[layer].append(self.backward_dend_state[layer])
                     self.nudges_train_history[layer].append(self.nudges[layer])
                 
-                self.backward_activity[layer] = self.activation_functions[layer](
-                    self.forward_soma_state[layer] + self.nudges[layer])
+                self.backward_activity[layer] = self.activation_functions[layer](self.forward_soma_state[layer] + self.nudges[layer])
                 prev_layer = layer
     
     def step_ojas(self):
@@ -551,6 +549,44 @@ class Net(nn.Module):
                     rec_lr = self.extra_params[rec_lr_key]
 
                 self.weights[layer].data += lr * torch.outer(self.nudges[layer].squeeze(), torch.clamp(self.forward_activity[lower_layer].squeeze(), 0., 1.))
+                
+                if layer != 'Out':
+                    self.recurrent_weights[layer].data += -1 * rec_lr * self.forward_dend_state[layer].T @ torch.clamp(self.forward_activity[layer], 0., 1.)
+                
+                if self.use_bias and self.learn_bias:
+                    self.biases[layer].data += self.extra_params['bias_lr'] * self.nudges[layer].squeeze()
+                
+                lower_layer = layer
+
+    def backward_dend_ojas_EI_contrast(self, targets):
+        with torch.no_grad():
+            reverse_layers = list(self.layers.keys())[::-1]
+            for idx, layer in enumerate(reverse_layers):
+                if layer == 'Out':
+                    self.nudges[layer] = (2.0 / self.output_feature_num) * self.ReLU_derivative(self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])
+                    self.nudges[layer].clamp_(-1., 1.)
+                else:
+                    upper_layer = reverse_layers[idx - 1]
+                    self.forward_dend_state[layer] = self.forward_activity[upper_layer] @ self.weights[upper_layer] + self.recurrent_layers[layer](self.forward_activity[layer])
+                    self.forward_dend_state[layer].clamp_(-1., 1.)
+                    self.backward_dend_state[layer] = self.backward_activity[upper_layer] @ self.weights[upper_layer] + self.recurrent_layers[layer](self.forward_activity[layer])
+                    self.backward_dend_state[layer].clamp_(-1., 1.)
+                    self.nudges[layer] = self.backward_dend_state[layer] * self.ReLU_derivative(self.forward_soma_state[layer]) # self.extra_params[f'beta_{layer}'] *
+                self.nudges_train_history[layer].append(self.nudges[layer])
+                self.backward_activity[layer] = self.activation_functions[layer](self.forward_soma_state[layer] + self.nudges[layer])
+
+    def step_dend_ojas_EI_contrast(self):
+        with torch.no_grad():
+            lr = self.lr
+            lower_layer = 'Input'
+            for idx, layer in enumerate(self.layers.keys()):
+                if layer != 'Out':
+                    rec_lr_key = f'rec_lr_H{idx+1}'
+                    rec_lr = self.extra_params[rec_lr_key]
+
+                self.weights[layer].data += (lr * self.backward_activity[layer].T * (torch.clamp(self.forward_activity_mean_subtracted[lower_layer].squeeze(), 0., 1.) -  self.backward_activity[layer].T * self.weights[layer].data)) #self.extra_params[f'alpha_{layer}'] *
+
+                # self.weights[layer].data += lr * torch.outer(self.nudges[layer].squeeze(), torch.clamp(self.forward_activity[lower_layer].squeeze(), 0., 1.))
                 
                 if layer != 'Out':
                     self.recurrent_weights[layer].data += -1 * rec_lr * self.forward_dend_state[layer].T @ torch.clamp(self.forward_activity[layer], 0., 1.)
@@ -633,12 +669,15 @@ class Net(nn.Module):
         if 'dend_temp_contrast' in description:
             self.backward_dend_temp_contrast(targets)
             self.step_dend_temp_contrast()
-        elif 'oja' in description:
+        elif 'ojas_dend' in description:
             self.backward_ojas(targets)
             self.step_ojas()
         elif 'dend_EI_contrast' in description:
             self.backward_dend_EI_contrast(targets)
             self.step_dend_EI_contrast()
+        elif 'dend_ojas_EI_contrast' in description:
+            self.backward_dend_ojas_EI_contrast(targets)
+            self.step_dend_ojas_EI_contrast()
     
     def test_model(self, test_loader, verbose=True, device='cpu'):
         '''
@@ -1024,7 +1063,7 @@ def evaluate_model(base_seed, num_input_units, hidden_units, num_classes, descri
         generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=show_plot,
                       png_save_path=png_save_path, svg_save_path=svg_save_path))
     
-    if "ojas_dend" in description:
+    if "ojas" in description:
         mean_subtract_input = True
     else:
         mean_subtract_input = False
@@ -1195,7 +1234,10 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                   'ojas_dend_fixed_bias': 'Oja\'s Rule Fixed Bias',
                   'dend_EI_contrast_learned_bias': 'Dendritic EI Contrast Learned Bias',
                   'dend_EI_contrast_zero_bias': 'Dendritic EI Contrast Zero Bias',
-                  'dend_EI_contrast_fixed_bias': 'Dendritic EI Contrast Fixed Bias'}
+                  'dend_EI_contrast_fixed_bias': 'Dendritic EI Contrast Fixed Bias',
+                  'dend_ojas_EI_contrast_learned_bias': 'Dendritic Oja\'s EI Contrast Learned Bias',
+                  'dend_ojas_EI_contrast_zero_bias': 'Dendritic Oja\'s EI Contrast Zero Bias',
+                  'dend_ojas_EI_contrast_fixed_bias': 'Dendritic Oja\'s EI Contrast Fixed Bias'}
         
     lr_dict = {'backprop_learned_bias': 0.161583299953611,
                'backprop_zero_bias': 0.180020087370744,
@@ -1208,7 +1250,10 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                'ojas_dend_fixed_bias': 0.0069,
                'dend_EI_contrast_learned_bias': 0.07743087422515695,
                'dend_EI_contrast_zero_bias': 0.179,
-               'dend_EI_contrast_fixed_bias': 0.04576}
+               'dend_EI_contrast_fixed_bias': 0.04576,
+               'dend_ojas_EI_contrast_learned_bias': 0.07743087422515695,
+               'dend_ojas_EI_contrast_zero_bias': 0.179,
+               'dend_ojas_EI_contrast_fixed_bias': 0.04576}
     
     lr = lr_dict[description]
       
@@ -1239,6 +1284,26 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
             rec_layer_key = f'rec_lr_H{i+1}'
             if rec_layer_key not in extra_params:
                 extra_params[rec_layer_key] = lr
+    elif "dend_ojas_EI" in description:
+        if "fixed_bias" in description:
+            extra_params['alpha_Out'] = 0.0590
+            extra_params['alpha_H2'] = 0.2274
+            extra_params['alpha_H1'] = 1.2339
+            extra_params['beta_Out'] = 1.8881
+            extra_params['beta_H2'] =  1.2264
+            extra_params['beta_H1'] = 1.7417
+            extra_params['rec_lr_H1'] = 0.05
+            extra_params['rec_lr_H2'] = 0.05
+        if "learned_bias" in description:
+            extra_params['alpha_Out'] = 0.0590
+            extra_params['alpha_H2'] = 0.2274
+            extra_params['alpha_H1'] = 1.2339
+            extra_params['beta_Out'] = 1.8881
+            extra_params['beta_H2'] =  1.2264
+            extra_params['beta_H1'] = 1.7417
+            extra_params['rec_lr_H1'] = 0.05
+            extra_params['rec_lr_H2'] = 0.05
+            extra_params['bias_lr'] = 0.01869784196670999
 
     if save_plot:
         png_save_path = "figures"
