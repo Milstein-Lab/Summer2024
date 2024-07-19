@@ -1154,7 +1154,7 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
             seed = seeds[idx]
             plot_title = label_dict[description]
             rep_net.display_summary(model_dict, title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot)
-            rep_net.plot_params(title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot)
+            rep_net.plot_params(title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot) 
 
     if return_net and interactive:
         return avg_val_acc, model_dict
@@ -1197,10 +1197,10 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                   'dend_EI_contrast_zero_bias': 'Dendritic EI Contrast Zero Bias',
                   'dend_EI_contrast_fixed_bias': 'Dendritic EI Contrast Fixed Bias'}
         
-    lr_dict = {'backprop_learned_bias': 0.1,
-               'backprop_zero_bias': 0.01,
-               'backprop_fixed_bias': 0.06,
-               'dend_temp_contrast_learned_bias': 0.14,
+    lr_dict = {'backprop_learned_bias': 0.161583299953611,
+               'backprop_zero_bias': 0.180020087370744,
+               'backprop_fixed_bias': 0.126449955011941,
+               'dend_temp_contrast_learned_bias': 0.172537249869428,
                'dend_temp_contrast_zero_bias': 0.01,
                'dend_temp_contrast_fixed_bias': 0.07,
                'ojas_dend_learned_bias': 0.01,
