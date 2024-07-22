@@ -833,9 +833,9 @@ class Net(nn.Module):
         # axes[1][2].imshow(map, extent=[-2, 2, -2, 2], origin='lower', cmap='coolwarm', alpha=0.7)
 
         correct_indices = (predicted_labels == test_labels).nonzero().squeeze()
-        axes[1][2].scatter(inputs[correct_indices,0], inputs[correct_indices,1], c=test_labels[correct_indices], s=4)
+        axes[1][2].scatter(inputs[correct_indices,0], inputs[correct_indices,1], c=test_labels[correct_indices], s=3, alpha=0.4)
         wrong_indices = (predicted_labels != test_labels).nonzero().squeeze()
-        axes[1][2].scatter(inputs[wrong_indices, 0], inputs[wrong_indices, 1], c='darkgrey', s=4)
+        axes[1][2].scatter(inputs[wrong_indices, 0], inputs[wrong_indices, 1], c='red', s=4)
         axes[1][2].set_xlabel('x1')
         axes[1][2].set_ylabel('x2')
         axes[1][2].set_title('Predictions')
@@ -1313,6 +1313,9 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
     else:
         png_save_path = None
         svg_save_path = None
+
+    plt.rcParams.update({"axes.spines.right": False, 
+                         "axes.spines.top": False})
 
     mean_val_accuracy, model_dict = eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, num_input_units, hidden_units, num_classes,
                                                   export, export_file_path, show_plot, png_save_path, svg_save_path,
