@@ -787,11 +787,11 @@ class Net(nn.Module):
         # axes[1][2].imshow(map, extent=[-2, 2, -2, 2], origin='lower', cmap='coolwarm', alpha=0.7)
 
         correct_indices = (predicted_labels == test_labels).nonzero().squeeze()
-        axes[1][2].scatter(inputs[correct_indices,0], inputs[correct_indices,1], c=test_labels[correct_indices], s=4)
+        axes[1][2].scatter(inputs[correct_indices,0], inputs[correct_indices,1], c=test_labels[correct_indices], s=3, alpha=0.4)
         wrong_indices = (predicted_labels != test_labels).nonzero().squeeze()
-        axes[1][2].scatter(inputs[wrong_indices, 0], inputs[wrong_indices, 1], c='darkgrey', s=4)
-        axes[1][2].set_xlabel('x1')
-        axes[1][2].set_ylabel('x2')
+        axes[1][2].scatter(inputs[wrong_indices, 0], inputs[wrong_indices, 1], c='red', s=4)
+        axes[1][2].set_xlabel('Input Neuron 1 (X)')
+        axes[1][2].set_ylabel('Input Neuron 2 (Y)')
         axes[1][2].set_title('Predictions')
 
         for j in range(3, num_layers):
@@ -957,18 +957,18 @@ def generate_data(K=4, sigma=0.16, N=2000, seed=None, gen=None, display=False, p
     if display or png_save_path is not None or svg_save_path is not None:
         fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(12, 4))
         axes[0].scatter(X_train[:, 0], X_train[:, 1], c = y_train, s=10)
-        axes[0].set_xlabel('x1')
-        axes[0].set_ylabel('x2')
+        axes[0].set_xlabel('Input Neuron 1 (X Axis)')
+        axes[0].set_ylabel('Input Neuron 2 (Y Axis)')
         axes[0].set_title('Train Data')
 
         axes[1].scatter(X_test[:, 0], X_test[:, 1], c=y_test, s=10)
-        axes[1].set_xlabel('x1')
-        axes[1].set_ylabel('x2')
+        axes[1].set_xlabel('Input Neuron 1 (X Axis)')
+        axes[1].set_ylabel('Input Neuron 2 (Y Axis)')
         axes[1].set_title('Test Data')
 
         axes[2].scatter(X_val[:, 0], X_val[:, 1], c=y_val, s=10)
-        axes[2].set_xlabel('x1')
-        axes[2].set_ylabel('x2')
+        axes[2].set_xlabel('Input Neuron 1 (X)', fontsize=15)
+        axes[2].set_ylabel('Input Neuron 2 (Y)', fontsize=15)
         axes[2].set_title('Validation Data')
 
         fig.tight_layout()
@@ -1213,6 +1213,14 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
         if "zero_bias" in description:
             extra_params['alpha'] = 0.6427
             extra_params['beta'] = 1.2165
+        if "learned bias" in description:
+            extra_params['alpha_Out'] = 1
+            extra_params['alpha_H2'] = 1
+            extra_params['alpha_H1'] = 1
+            extra_params['beta_Out'] = 1
+            extra_params['beta_H2'] = 1
+            extra_params['beta_H1'] = 1
+
     elif "dend_EI_contrast" in description:
         if "learned_bias" in description:
             extra_params['rec_lr_H1'] = 0.5328724772039555
