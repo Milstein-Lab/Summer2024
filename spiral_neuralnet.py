@@ -836,8 +836,8 @@ class Net(nn.Module):
         axes[1][2].scatter(inputs[correct_indices,0], inputs[correct_indices,1], c=test_labels[correct_indices], s=3, alpha=0.4)
         wrong_indices = (predicted_labels != test_labels).nonzero().squeeze()
         axes[1][2].scatter(inputs[wrong_indices, 0], inputs[wrong_indices, 1], c='red', s=4)
-        axes[1][2].set_xlabel('x1')
-        axes[1][2].set_ylabel('x2')
+        axes[1][2].set_xlabel('Neuron 1')
+        axes[1][2].set_ylabel('Neuron 2')
         axes[1][2].set_title('Predictions')
 
         for j in range(3, num_layers):
@@ -1003,18 +1003,18 @@ def generate_data(K=4, sigma=0.16, N=2000, seed=None, gen=None, display=False, p
     if display or png_save_path is not None or svg_save_path is not None:
         fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(12, 4))
         axes[0].scatter(X_train[:, 0], X_train[:, 1], c = y_train, s=10)
-        axes[0].set_xlabel('x1')
-        axes[0].set_ylabel('x2')
+        axes[0].set_xlabel('Neuron 1')
+        axes[0].set_ylabel('Neuron 2')
         axes[0].set_title('Train Data')
 
         axes[1].scatter(X_test[:, 0], X_test[:, 1], c=y_test, s=10)
-        axes[1].set_xlabel('x1')
-        axes[1].set_ylabel('x2')
+        axes[1].set_xlabel('Neuron 1')
+        axes[1].set_ylabel('Neuron 2')
         axes[1].set_title('Test Data')
 
         axes[2].scatter(X_val[:, 0], X_val[:, 1], c=y_val, s=10)
-        axes[2].set_xlabel('x1')
-        axes[2].set_ylabel('x2')
+        axes[2].set_xlabel('Neuron 1')
+        axes[2].set_ylabel('Neuron 2')
         axes[2].set_title('Validation Data')
 
         fig.tight_layout()
@@ -1213,8 +1213,9 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
 @click.option('--num_train_steps', type=int, default=None)
 @click.option('--num_seeds', type=int, default=1)
 @click.option('--num_cores', type=int, default=None)
+@click.option('--poster', is_flag=True)
 def main(description, show_plot, save_plot, interactive, export, export_file_path, seed, debug, num_train_steps, num_seeds,
-         num_cores):
+         num_cores, poster):
     start_time = time.time()
 
     base_seed = seed
@@ -1314,8 +1315,13 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
         png_save_path = None
         svg_save_path = None
 
-    plt.rcParams.update({"axes.spines.right": False, 
-                         "axes.spines.top": False})
+    if poster:
+        plt.rcParams.update({"axes.spines.right": False, 
+                            "axes.spines.top": False,
+                            "text.usetex": False, 
+                            "font.size": 11,
+                            "svg.fonttype": "none", 
+                            "font.family": "Verdana"})
 
     mean_val_accuracy, model_dict = eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, num_input_units, hidden_units, num_classes,
                                                   export, export_file_path, show_plot, png_save_path, svg_save_path,
