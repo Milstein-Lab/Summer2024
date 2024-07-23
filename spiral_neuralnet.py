@@ -13,6 +13,7 @@ import sys
 import os
 from os import cpu_count
 import click
+import multiprocessing
 from joblib import Parallel, delayed
 import traceback
 import time
@@ -168,12 +169,12 @@ class Net(nn.Module):
         
         self.recurrent_layers = {}
         self.recurrent_weights = {}
-        if 'dend_EI_contrast' in self.description:
+        if 'EI' in self.description:
             for i, num in enumerate(self.hidden_unit_nums):
                 layer = f'H{i+1}'
                 self.recurrent_layers[layer] = nn.Linear(num, num, bias=False)
                 self.recurrent_weights[layer] = self.recurrent_layers[layer].weight
-        elif 'oja' in self.description:
+        if 'ojas' in self.description:
             self.running_average_len = 600
 
         self.hooked_grads = {}
@@ -350,7 +351,8 @@ class Net(nn.Module):
         self.train_labels = []
         self.predicted_labels = []
     
-    def train_model(self, description, train_loader, val_loader, debug=False, num_train_steps=None, num_epochs=1, verbose=False, device='cpu'):
+    def train_model(self, description, train_loader, val_loader, debug=False, num_train_steps=None, num_epochs=1,
+                    verbose=False, device='cpu', status_bar=True):
         """
         Train model with backprop, accumulate loss, evaluate performance
     
@@ -363,7 +365,8 @@ class Net(nn.Module):
         - num_epochs (int): Number of epochs [default: 1]
         - verbose (boolean): If True, print statistics
         - device (string): CUDA/GPU if available, CPU otherwise
-    
+        - status_bar: bool
+
         Returns:
         - val_acc (int): Accuracy of model on train data
         """
@@ -372,9 +375,13 @@ class Net(nn.Module):
         self.reinit()
         train_step = 0
         criterion_function = eval(f"nn.MSELoss()")
+        if status_bar:
+            train_loader_iter = tqdm(train_loader)
+        else:
+            train_loader_iter = train_loader
 
         for epoch in range(num_epochs):  # Loop over the dataset multiple times
-            for data in tqdm(train_loader):
+            for data in train_loader_iter:
                 # Get the inputs; data is a list of [input, label]
                 input, label = data
                 input = input.to(device).float()
@@ -434,17 +441,17 @@ class Net(nn.Module):
             print(f'\nAccuracy on the {val_total} training samples: {val_acc:0.2f}')
 
         return val_acc
-    
-    def train_backprop(self, loss):
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
 
     def ReLU_derivative(self, x):
         output = torch.ones_like(x)
         indexes = torch.where(x <= 0)
         output[indexes] = 0
         return output
+
+    def train_backprop(self, loss):
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
 
     def backward_dend_temp_contrast(self, targets):
         with torch.no_grad():
@@ -469,7 +476,6 @@ class Net(nn.Module):
                 prev_layer = layer
 
     def step_dend_temp_contrast(self):
-        # add beta scalars?
         with torch.no_grad():
             lr = self.lr
             with torch.no_grad():
@@ -502,8 +508,7 @@ class Net(nn.Module):
                     self.backward_dend_state_train_history[layer].append(self.backward_dend_state[layer])
                     self.nudges_train_history[layer].append(self.nudges[layer])
                 
-                self.backward_activity[layer] = self.activation_functions[layer](
-                    self.forward_soma_state[layer] + self.nudges[layer])
+                self.backward_activity[layer] = self.activation_functions[layer](self.forward_soma_state[layer] + self.nudges[layer])
                 prev_layer = layer
     
     def step_ojas(self):
@@ -551,6 +556,44 @@ class Net(nn.Module):
                 if self.use_bias and self.learn_bias:
                     self.biases[layer].data += self.extra_params['bias_lr'] * self.nudges[layer].squeeze()
                 
+                lower_layer = layer
+
+    def backward_dend_ojas_EI_contrast(self, targets):
+        with torch.no_grad():
+            reverse_layers = list(self.layers.keys())[::-1]
+            for idx, layer in enumerate(reverse_layers):
+                if layer == 'Out':
+                    self.nudges[layer] = (2.0 / self.output_feature_num) * self.ReLU_derivative(self.forward_soma_state[layer]) * (targets - self.forward_activity['Out'])
+                    self.nudges[layer].clamp_(-1., 1.)
+                else:
+                    upper_layer = reverse_layers[idx - 1]
+                    self.forward_dend_state[layer] = self.forward_activity[upper_layer] @ self.weights[upper_layer] + self.recurrent_layers[layer](self.forward_activity[layer])
+                    self.forward_dend_state[layer].clamp_(-1., 1.)
+                    self.backward_dend_state[layer] = self.backward_activity[upper_layer] @ self.weights[upper_layer] + self.recurrent_layers[layer](self.forward_activity[layer])
+                    self.backward_dend_state[layer].clamp_(-1., 1.)
+                    self.nudges[layer] = self.backward_dend_state[layer] * self.ReLU_derivative(self.forward_soma_state[layer]) # self.extra_params[f'beta_{layer}'] *
+                self.nudges_train_history[layer].append(self.nudges[layer])
+                self.backward_activity[layer] = self.activation_functions[layer](self.forward_soma_state[layer] + self.nudges[layer])
+
+    def step_dend_ojas_EI_contrast(self):
+        with torch.no_grad():
+            lr = self.lr
+            lower_layer = 'Input'
+            for idx, layer in enumerate(self.layers.keys()):
+                if layer != 'Out':
+                    rec_lr_key = f'rec_lr_H{idx+1}'
+                    rec_lr = self.extra_params[rec_lr_key]
+
+                self.weights[layer].data += (lr * self.backward_activity[layer].T * (torch.clamp(self.forward_activity_mean_subtracted[lower_layer].squeeze(), 0., 1.) -  self.backward_activity[layer].T * self.weights[layer].data)) #self.extra_params[f'alpha_{layer}'] *
+
+                # self.weights[layer].data += lr * torch.outer(self.nudges[layer].squeeze(), torch.clamp(self.forward_activity[lower_layer].squeeze(), 0., 1.))
+
+                if layer != 'Out':
+                    self.recurrent_weights[layer].data += -1 * rec_lr * self.forward_dend_state[layer].T @ torch.clamp(self.forward_activity[layer], 0., 1.)
+
+                if self.use_bias and self.learn_bias:
+                    self.biases[layer].data += self.extra_params['bias_lr'] * self.nudges[layer].squeeze()
+
                 lower_layer = layer
 
     def store_train_history(self):
@@ -626,13 +669,16 @@ class Net(nn.Module):
         if 'dend_temp_contrast' in description:
             self.backward_dend_temp_contrast(targets)
             self.step_dend_temp_contrast()
-        elif 'oja' in description:
+        elif 'ojas_dend' in description:
             self.backward_ojas(targets)
             self.step_ojas()
         elif 'dend_EI_contrast' in description:
             self.backward_dend_EI_contrast(targets)
             self.step_dend_EI_contrast()
-    
+        elif 'dend_ojas_EI_contrast' in description:
+            self.backward_dend_ojas_EI_contrast(targets)
+            self.step_dend_ojas_EI_contrast()
+
     def test_model(self, test_loader, verbose=True, device='cpu'):
         '''
         Evaluate performance
@@ -789,6 +835,9 @@ class Net(nn.Module):
         correct_indices = (predicted_labels == test_labels).nonzero().squeeze()
         axes[1][2].scatter(inputs[correct_indices,0], inputs[correct_indices,1], c=test_labels[correct_indices], s=3, alpha=0.4)
         wrong_indices = (predicted_labels != test_labels).nonzero().squeeze()
+        axes[1][2].scatter(inputs[wrong_indices, 0], inputs[wrong_indices, 1], c='red', s=4)
+        axes[1][2].set_xlabel('Neuron 1')
+        axes[1][2].set_ylabel('Neuron 2')
         axes[1][2].scatter(inputs[wrong_indices, 0], inputs[wrong_indices, 1], c='red', s=4)
         axes[1][2].set_xlabel('Input Neuron 1 (X)')
         axes[1][2].set_ylabel('Input Neuron 2 (Y)')
@@ -1017,7 +1066,7 @@ def evaluate_model(base_seed, num_input_units, hidden_units, num_classes, descri
         generate_data(K=num_classes, seed=data_split_seed, gen=local_torch_random, display=show_plot,
                       png_save_path=png_save_path, svg_save_path=svg_save_path))
     
-    if "ojas_dend" in description:
+    if "ojas" in description:
         mean_subtract_input = True
     else:
         mean_subtract_input = False
@@ -1036,10 +1085,12 @@ def evaluate_model(base_seed, num_input_units, hidden_units, num_classes, descri
               mean_subtract_input=mean_subtract_input, seed=network_seed).to(DEVICE)
 
     if debug:
-        net.register_hooks()
+        # net.register_hooks()
         try:
+            current_time = time.time()
             net.train_model(description, train_loader, val_loader, debug=debug, num_train_steps=num_train_steps,
-                        num_epochs=num_epochs, device=DEVICE)
+                        num_epochs=num_epochs, device=DEVICE, status_bar=status_bar)
+            print(os.getpid(), 'took %.3f s to train' % (time.time() - current_time))
         except AssertionError:
             print(f"{num_train_steps} train steps completed.")
         except Exception as e:
@@ -1067,9 +1118,10 @@ def evaluate_model(base_seed, num_input_units, hidden_units, num_classes, descri
         return None, val_acc, final_val_loss, test_acc
 
 
-def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, num_input_units, hidden_units, num_classes, export,
-                              export_file_path, show_plot, png_save_path, svg_save_path, label_dict, debug, num_train_steps, 
-                              test=True, extra_params=None, verbose=True, return_net=False, interactive=False, **kwargs):
+def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, num_input_units, hidden_units,
+                              num_classes, export, export_file_path, show_plot, png_save_path, svg_save_path,
+                              label_dict, debug, num_train_steps, test=True, extra_params=None, verbose=True,
+                              return_net=False, interactive=False, status_bar=True, **kwargs):
     
     # Determine number of available cores
     if num_cores is None:
@@ -1102,11 +1154,13 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
         'plot_example_seed': base_seed,
         'extra_params': extra_params,
         'return_net': return_net,
-        'export': export
+        'export': export,
+        'status_bar': status_bar
     }
 
     if num_cores > 1:
-        results = Parallel(n_jobs=num_cores)(delayed(evaluate_model)(seed, **eval_params) for seed in seeds)
+        multiprocessing.set_start_method('spawn', force=True)
+        results = Parallel(n_jobs=num_cores, backend='multiprocessing')(delayed(evaluate_model)(seed, **eval_params) for seed in seeds)
     else:
         # Run without multiprocessing
         results = [evaluate_model(seed, **eval_params) for seed in seeds]
@@ -1163,8 +1217,9 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
 @click.option('--num_train_steps', type=int, default=None)
 @click.option('--num_seeds', type=int, default=1)
 @click.option('--num_cores', type=int, default=None)
+@click.option('--poster', is_flag=True)
 def main(description, show_plot, save_plot, interactive, export, export_file_path, seed, debug, num_train_steps, num_seeds,
-         num_cores):
+         num_cores, poster):
     start_time = time.time()
 
     base_seed = seed
@@ -1184,12 +1239,15 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                   'ojas_dend_fixed_bias': 'Oja\'s Rule Fixed Bias',
                   'dend_EI_contrast_learned_bias': 'Dendritic EI Contrast Learned Bias',
                   'dend_EI_contrast_zero_bias': 'Dendritic EI Contrast Zero Bias',
-                  'dend_EI_contrast_fixed_bias': 'Dendritic EI Contrast Fixed Bias'}
+                  'dend_EI_contrast_fixed_bias': 'Dendritic EI Contrast Fixed Bias',
+                  'dend_ojas_EI_contrast_learned_bias': 'Dendritic Oja\'s EI Contrast Learned Bias',
+                  'dend_ojas_EI_contrast_zero_bias': 'Dendritic Oja\'s EI Contrast Zero Bias',
+                  'dend_ojas_EI_contrast_fixed_bias': 'Dendritic Oja\'s EI Contrast Fixed Bias'}
         
-    lr_dict = {'backprop_learned_bias': 0.1,
-               'backprop_zero_bias': 0.01,
-               'backprop_fixed_bias': 0.06,
-               'dend_temp_contrast_learned_bias': 0.14,
+    lr_dict = {'backprop_learned_bias': 0.161583299953611,
+               'backprop_zero_bias': 0.180020087370744,
+               'backprop_fixed_bias': 0.126449955011941,
+               'dend_temp_contrast_learned_bias': 0.172537249869428,
                'dend_temp_contrast_zero_bias': 0.01,
                'dend_temp_contrast_fixed_bias': 0.07,
                'ojas_dend_learned_bias': 0.01,
@@ -1197,7 +1255,10 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                'ojas_dend_fixed_bias':  0.005343058244913412,
                'dend_EI_contrast_learned_bias': 0.07743087422515695,
                'dend_EI_contrast_zero_bias': 0.179,
-               'dend_EI_contrast_fixed_bias': 0.04576}
+               'dend_EI_contrast_fixed_bias': 0.04576,
+               'dend_ojas_EI_contrast_learned_bias': 0.07743087422515695,
+               'dend_ojas_EI_contrast_zero_bias': 0.179,
+               'dend_ojas_EI_contrast_fixed_bias': 0.04576}
     
     lr = lr_dict[description]
       
@@ -1236,6 +1297,26 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
             rec_layer_key = f'rec_lr_H{i+1}'
             if rec_layer_key not in extra_params:
                 extra_params[rec_layer_key] = lr
+    elif "dend_ojas_EI" in description:
+        if "fixed_bias" in description:
+            extra_params['alpha_Out'] = 0.0590
+            extra_params['alpha_H2'] = 0.2274
+            extra_params['alpha_H1'] = 1.2339
+            extra_params['beta_Out'] = 1.8881
+            extra_params['beta_H2'] =  1.2264
+            extra_params['beta_H1'] = 1.7417
+            extra_params['rec_lr_H1'] = 0.05
+            extra_params['rec_lr_H2'] = 0.05
+        if "learned_bias" in description:
+            extra_params['alpha_Out'] = 0.0590
+            extra_params['alpha_H2'] = 0.2274
+            extra_params['alpha_H1'] = 1.2339
+            extra_params['beta_Out'] = 1.8881
+            extra_params['beta_H2'] =  1.2264
+            extra_params['beta_H1'] = 1.7417
+            extra_params['rec_lr_H1'] = 0.05
+            extra_params['rec_lr_H2'] = 0.05
+            extra_params['bias_lr'] = 0.01869784196670999
 
     if save_plot:
         png_save_path = "figures"
@@ -1245,6 +1326,14 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
     else:
         png_save_path = None
         svg_save_path = None
+
+    if poster:
+        plt.rcParams.update({"axes.spines.right": False,
+                            "axes.spines.top": False,
+                            "text.usetex": False,
+                            "font.size": 11,
+                            "svg.fonttype": "none",
+                            "font.family": "Verdana"})
 
     mean_val_accuracy, model_dict = eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, num_input_units, hidden_units, num_classes,
                                                   export, export_file_path, show_plot, png_save_path, svg_save_path,

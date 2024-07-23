@@ -87,36 +87,38 @@ def main(description, num_trials, export, export_file_path):
         print(f"    {key}: {value}")
         best_params_dict[key] = value
 
-    # Plotting
-    graphs_dir = 'screen_data'
-    os.makedirs(graphs_dir, exist_ok=True)
-    os.makedirs('svg_figures', exist_ok=True)
+    if plot:
+        import plotly.graph_objs as go
 
-    fig = go.Figure()
-    fig = optuna.visualization.plot_optimization_history(study)
-    fig.update_layout(
-        title_text=f"{description} Accuracy over Trials",
-        xaxis_title="Trial",
-        yaxis_title='Accuracy'
-    )
-    best_params_text = "\n".join([f"Best {key}: {value}" for key, value in best_params_dict.items()])
-    fig.add_annotation(
-        text=best_params_text,
-        xref="paper",
-        yref="paper",
-        x=0,
-        y=1,
-        showarrow=False,
-        align="left",
-        bordercolor="black",
-        borderwidth=1,
-        borderpad=4,
-        bgcolor="white",
-        opacity=0.8
-    )
-    # fig.write_image(f"{graphs_dir}/{description}_screen.png")
-    # fig.write_image(f"svg_figures/{description}_screen.svg")
-    fig.show()
+        # graphs_dir = 'screen_data'
+        # os.makedirs(graphs_dir, exist_ok=True)
+        # os.makedirs('svg_figures', exist_ok=True)
+
+        fig = go.Figure()
+        fig = optuna.visualization.plot_optimization_history(study)
+        fig.update_layout(
+            title_text=f"{description} Accuracy over Trials",
+            xaxis_title="Trial",
+            yaxis_title='Accuracy'
+        )
+        best_params_text = "\n".join([f"Best {key}: {value}" for key, value in best_params_dict.items()])
+        fig.add_annotation(
+            text=best_params_text,
+            xref="paper",
+            yref="paper",
+            x=0,
+            y=1,
+            showarrow=False,
+            align="left",
+            bordercolor="black",
+            borderwidth=1,
+            borderpad=4,
+            bgcolor="white",
+            opacity=0.8
+        )
+        # fig.write_image(f"{graphs_dir}/{description}_screen.png")
+        # fig.write_image(f"svg_figures/{description}_screen.svg")
+        fig.show()
 
     for param in study.best_params:
         fig = go.Figure()
@@ -178,15 +180,16 @@ def main(description, num_trials, export, export_file_path):
             pickle.dump(screen_data_history, f)
         print(f'Screen data history saved to pkl_data/{export_file_path}')
 
-        if os.path.exists('pkl_data/optuna_studies.pkl'):
-            with open(f'pkl_data/optuna_studies.pkl', 'rb') as f:
+        study_path = 'optuna_studies'
+        if os.path.exists(f'pkl_data/{study_path}.pkl'):
+            with open(f'pkl_data/{study_path}.pkl', 'rb') as f:
                 optuna_studies = pickle.load(f)
         else:
             optuna_studies = {}
         optuna_studies[description] = study
-        with open('pkl_data/optuna_studies.pkl', 'wb') as f:
+        with open(f'pkl_data/{study_path}.pkl', 'wb') as f:
             pickle.dump(optuna_studies, f)
-        print('Optuna study saved to pkl_data/optuna_studies')
+        print(f'Optuna study saved to pkl_data/{study_path}')
 
 
 if __name__ == "__main__":
