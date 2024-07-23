@@ -836,8 +836,8 @@ class Net(nn.Module):
         axes[1][2].scatter(inputs[correct_indices,0], inputs[correct_indices,1], c=test_labels[correct_indices], s=3, alpha=0.4)
         wrong_indices = (predicted_labels != test_labels).nonzero().squeeze()
         axes[1][2].scatter(inputs[wrong_indices, 0], inputs[wrong_indices, 1], c='red', s=4)
-        axes[1][2].set_xlabel('Neuron 1')
-        axes[1][2].set_ylabel('Neuron 2')
+        axes[1][2].set_xlabel('x1')
+        axes[1][2].set_ylabel('x2')
         axes[1][2].set_title('Predictions')
 
         for j in range(3, num_layers):
@@ -1178,6 +1178,7 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
         sys.stdout.flush()
 
     model_dict = {description: {seed: results[i][0] for i, seed in enumerate(seeds)}}
+    model_dict['val_acc'] = avg_val_acc
     if export:
         os.makedirs(export_file_path, exist_ok=True)
         model_file_path = os.path.join(export_file_path, f"{description}_models.pkl")
