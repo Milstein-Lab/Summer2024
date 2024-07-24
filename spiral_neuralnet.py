@@ -366,7 +366,7 @@ class Net(nn.Module):
         - verbose (boolean): If True, print statistics
         - device (string): CUDA/GPU if available, CPU otherwise
         - status_bar: bool
-
+    
         Returns:
         - val_acc (int): Accuracy of model on train data
         """
@@ -379,7 +379,7 @@ class Net(nn.Module):
             train_loader_iter = tqdm(train_loader)
         else:
             train_loader_iter = train_loader
-
+        
         for epoch in range(num_epochs):  # Loop over the dataset multiple times
             for data in train_loader_iter:
                 # Get the inputs; data is a list of [input, label]
@@ -441,13 +441,13 @@ class Net(nn.Module):
             print(f'\nAccuracy on the {val_total} training samples: {val_acc:0.2f}')
 
         return val_acc
-
+    
     def ReLU_derivative(self, x):
         output = torch.ones_like(x)
         indexes = torch.where(x <= 0)
         output[indexes] = 0
         return output
-
+    
     def train_backprop(self, loss):
         self.optimizer.zero_grad()
         loss.backward()
@@ -587,13 +587,13 @@ class Net(nn.Module):
                 self.weights[layer].data += (lr * self.backward_activity[layer].T * (torch.clamp(self.forward_activity_mean_subtracted[lower_layer].squeeze(), 0., 1.) -  self.backward_activity[layer].T * self.weights[layer].data)) #self.extra_params[f'alpha_{layer}'] *
 
                 # self.weights[layer].data += lr * torch.outer(self.nudges[layer].squeeze(), torch.clamp(self.forward_activity[lower_layer].squeeze(), 0., 1.))
-
+                
                 if layer != 'Out':
                     self.recurrent_weights[layer].data += -1 * rec_lr * self.forward_dend_state[layer].T @ torch.clamp(self.forward_activity[layer], 0., 1.)
-
+                
                 if self.use_bias and self.learn_bias:
                     self.biases[layer].data += self.extra_params['bias_lr'] * self.nudges[layer].squeeze()
-
+                
                 lower_layer = layer
 
     def store_train_history(self):
@@ -678,7 +678,7 @@ class Net(nn.Module):
         elif 'dend_ojas_EI_contrast' in description:
             self.backward_dend_ojas_EI_contrast(targets)
             self.step_dend_ojas_EI_contrast()
-
+    
     def test_model(self, test_loader, verbose=True, device='cpu'):
         '''
         Evaluate performance
@@ -836,11 +836,8 @@ class Net(nn.Module):
         axes[1][2].scatter(inputs[correct_indices,0], inputs[correct_indices,1], c=test_labels[correct_indices], s=3, alpha=0.4)
         wrong_indices = (predicted_labels != test_labels).nonzero().squeeze()
         axes[1][2].scatter(inputs[wrong_indices, 0], inputs[wrong_indices, 1], c='red', s=4)
-        axes[1][2].set_xlabel('Neuron 1')
-        axes[1][2].set_ylabel('Neuron 2')
-        axes[1][2].scatter(inputs[wrong_indices, 0], inputs[wrong_indices, 1], c='red', s=4)
-        axes[1][2].set_xlabel('Input Neuron 1 (X)')
-        axes[1][2].set_ylabel('Input Neuron 2 (Y)')
+        axes[1][2].set_xlabel('x1')
+        axes[1][2].set_ylabel('x2')
         axes[1][2].set_title('Predictions')
 
         for j in range(3, num_layers):
@@ -1006,18 +1003,18 @@ def generate_data(K=4, sigma=0.16, N=2000, seed=None, gen=None, display=False, p
     if display or png_save_path is not None or svg_save_path is not None:
         fig, axes = plt.subplots(nrows=1, ncols=3, figsize=(12, 4))
         axes[0].scatter(X_train[:, 0], X_train[:, 1], c = y_train, s=10)
-        axes[0].set_xlabel('Input Neuron 1 (X Axis)')
-        axes[0].set_ylabel('Input Neuron 2 (Y Axis)')
+        axes[0].set_xlabel('Neuron 1')
+        axes[0].set_ylabel('Neuron 2')
         axes[0].set_title('Train Data')
 
         axes[1].scatter(X_test[:, 0], X_test[:, 1], c=y_test, s=10)
-        axes[1].set_xlabel('Input Neuron 1 (X Axis)')
-        axes[1].set_ylabel('Input Neuron 2 (Y Axis)')
+        axes[1].set_xlabel('Neuron 1')
+        axes[1].set_ylabel('Neuron 2')
         axes[1].set_title('Test Data')
 
         axes[2].scatter(X_val[:, 0], X_val[:, 1], c=y_val, s=10)
-        axes[2].set_xlabel('Input Neuron 1 (X)', fontsize=15)
-        axes[2].set_ylabel('Input Neuron 2 (Y)', fontsize=15)
+        axes[2].set_xlabel('Neuron 1')
+        axes[2].set_ylabel('Neuron 2')
         axes[2].set_title('Validation Data')
 
         fig.tight_layout()
@@ -1044,9 +1041,9 @@ def generate_data(K=4, sigma=0.16, N=2000, seed=None, gen=None, display=False, p
     
     return X_test, y_test, X_train, y_train, X_val, y_val, test_loader, train_loader, val_loader
 
-def evaluate_model(base_seed, num_input_units, hidden_units, num_classes, description, lr, debug, num_train_steps, show_plot=False,
-                   png_save_path=None, svg_save_path=None, test=False, plot_example_seed=None, extra_params=None, return_net=False,
-                   export=False, status_bar=True):
+def evaluate_model(base_seed, num_input_units, hidden_units, num_classes, description, lr, debug, num_train_steps,
+                   show_plot=False, png_save_path=None, svg_save_path=None, test=False, plot_example_seed=None,
+                   extra_params=None, return_net=False, export=False, status_bar=True):
     
     num_epochs = 1
     data_split_seed = 0
@@ -1189,7 +1186,6 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
             pickle.dump(model_dict, f)
         print(f"Network exported to {model_file_path}")
 
-
     if return_net:
         # Plotting
         if (show_plot and test) or png_save_path or svg_save_path:
@@ -1198,7 +1194,7 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
             seed = seeds[idx]
             plot_title = label_dict[description]
             rep_net.display_summary(model_dict, title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot)
-            rep_net.plot_params(title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot)
+            rep_net.plot_params(title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot) 
 
     if return_net and interactive:
         return avg_val_acc, model_dict
@@ -1249,11 +1245,11 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                'backprop_zero_bias': 0.180020087370744,
                'backprop_fixed_bias': 0.126449955011941,
                'dend_temp_contrast_learned_bias': 0.172537249869428,
-               'dend_temp_contrast_zero_bias': 1,
-               'dend_temp_contrast_fixed_bias': 0.1347717259720169,
-               'ojas_dend_learned_bias': 0.01,
+               'dend_temp_contrast_zero_bias': 0.01,
+               'dend_temp_contrast_fixed_bias': 0.07,
+               'ojas_dend_learned_bias': 1,
                'ojas_dend_zero_bias': 0.02,
-               'ojas_dend_fixed_bias':  0.005343058244913412,
+               'ojas_dend_fixed_bias': 0.005343058244913412,
                'dend_EI_contrast_learned_bias': 0.07743087422515695,
                'dend_EI_contrast_zero_bias': 0.179,
                'dend_EI_contrast_fixed_bias': 0.04576,
@@ -1282,7 +1278,6 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
             extra_params['beta_Out'] = 1
             extra_params['beta_H2'] = 1
             extra_params['beta_H1'] = 1
-
     elif "dend_EI_contrast" in description:
         if "learned_bias" in description:
             extra_params['rec_lr_H1'] = 0.5328724772039555
@@ -1329,11 +1324,11 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
         svg_save_path = None
 
     if poster:
-        plt.rcParams.update({"axes.spines.right": False,
+        plt.rcParams.update({"axes.spines.right": False, 
                             "axes.spines.top": False,
-                            "text.usetex": False,
+                            "text.usetex": False, 
                             "font.size": 11,
-                            "svg.fonttype": "none",
+                            "svg.fonttype": "none", 
                             "font.family": "Verdana"})
 
     mean_val_accuracy, model_dict = eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, num_input_units, hidden_units, num_classes,
