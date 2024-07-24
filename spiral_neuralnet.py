@@ -1178,7 +1178,7 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
         sys.stdout.flush()
 
     model_dict = {description: {seed: results[i][0] for i, seed in enumerate(seeds)}}
-    model_dict['val_acc'] = avg_val_acc
+    model_dict['test_acc'] = avg_test_acc
     if export:
         os.makedirs(export_file_path, exist_ok=True)
         model_file_path = os.path.join(export_file_path, f"{description}_models.pkl")

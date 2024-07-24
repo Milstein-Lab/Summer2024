@@ -43,7 +43,7 @@ def main(description1, description2, description3):
     for d in descriptions:
         pkl_files.append(d + '_models.pkl')
     
-    val_accuracies = {}
+    test_accuracies = {}
     individual_accuracies = {}
 
     for pkl in pkl_files:
@@ -52,19 +52,19 @@ def main(description1, description2, description3):
 
         with open(os.path.join(pkl_dir, pkl), 'rb') as f:
             dict = pickle.load(f)
-        val_acc = dict['val_acc']
+        test_acc = dict['test_acc']
         nets_dict = dict[description]
 
-        val_accuracies[description] = val_acc
-        individual_accuracies[description] = [net.val_acc for net in nets_dict.values()]
+        test_accuracies[description] = test_acc
+        individual_accuracies[description] = [net.test_acc for net in nets_dict.values()]
 
-    labels = [label_dict[key] for key in val_accuracies.keys()]
-    accuracies = [val_accuracies[key] for key in val_accuracies.keys()]
+    labels = [label_dict[key] for key in test_accuracies.keys()]
+    accuracies = [test_accuracies[key] for key in test_accuracies.keys()]
 
     plt.figure(figsize=(10,6))
     bars = plt.bar(labels, accuracies)
     plt.xlabel('Model Variations')
-    plt.ylabel('Validation Accuracy (%)')
+    plt.ylabel('Test Accuracy (%)')
     plt.title('Comparison of Neural Network Variations')
     plt.xticks(range(len(labels)))
     plt.ylim(70, 100)
@@ -75,9 +75,9 @@ def main(description1, description2, description3):
 
     for i, bar in enumerate(bars):
         yval = bar.get_height()
-        plt.text(i, 72, f'val acc: {round(yval, 2)}', va='center', ha='center', color='white', zorder=5) 
+        plt.text(i, 72, f'test acc: {round(yval, 2)}', va='center', ha='center', color='white', zorder=5) 
 
-    for i, description in enumerate(val_accuracies.keys()):
+    for i, description in enumerate(test_accuracies.keys()):
         scatter_y = individual_accuracies[description]
         scatter_x = [i] * len(scatter_y)
         plt.scatter(scatter_x, scatter_y, color='red', zorder=5)
