@@ -1046,7 +1046,7 @@ def generate_data(K=4, sigma=0.16, N=2000, seed=None, gen=None, display=False, p
 
 def evaluate_model(base_seed, num_input_units, hidden_units, num_classes, description, lr, debug, num_train_steps, show_plot=False, 
                    png_save_path=None, svg_save_path=None, test=False, plot_example_seed=None, extra_params=None, return_net=False,
-                   export=False):
+                   export=False, status_bar=True):
     
     num_epochs = 1
     data_split_seed = 0
@@ -1248,8 +1248,8 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
                'backprop_zero_bias': 0.180020087370744,
                'backprop_fixed_bias': 0.126449955011941,
                'dend_temp_contrast_learned_bias': 0.172537249869428,
-               'dend_temp_contrast_zero_bias': 0.01,
-               'dend_temp_contrast_fixed_bias': 0.07,
+               'dend_temp_contrast_zero_bias': 1,
+               'dend_temp_contrast_fixed_bias': 0.1347717259720169,
                'ojas_dend_learned_bias': 0.01,
                'ojas_dend_zero_bias': 0.02,
                'ojas_dend_fixed_bias':  0.005343058244913412,
