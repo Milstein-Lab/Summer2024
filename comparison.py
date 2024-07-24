@@ -64,10 +64,10 @@ def main(description1, description2, description3):
     plt.figure(figsize=(10,6))
     bars = plt.bar(labels, accuracies)
     plt.xlabel('Model Variations')
-    plt.ylabel('Validation Accuracy')
+    plt.ylabel('Validation Accuracy (%)')
     plt.title('Comparison of Neural Network Variations')
     plt.xticks(range(len(labels)))
-    plt.ylim(60, 100)
+    plt.ylim(70, 100)
 
     r = 45 if len(descriptions) > 3 else None
     h = 'right' if len(descriptions) > 3 else 'center'
@@ -75,7 +75,7 @@ def main(description1, description2, description3):
 
     for i, bar in enumerate(bars):
         yval = bar.get_height()
-        plt.text(i, 63, f'val acc: {round(yval, 2)}', va='center', ha='center', color='white', zorder=5) 
+        plt.text(i, 72, f'val acc: {round(yval, 2)}', va='center', ha='center', color='white', zorder=5) 
 
     for i, description in enumerate(val_accuracies.keys()):
         scatter_y = individual_accuracies[description]
@@ -92,7 +92,7 @@ def main(description1, description2, description3):
         t_stat, p_val = ttest_ind(reference_accuracies, accuracies_to_compare)
         p_values.append(p_val)
         # Annotate the p-value on the graph
-        plt.text(i+1, 65, f'p={p_val:.3f}', ha='center', va='bottom', color='black', fontsize=10)
+        plt.text(i+1, 75, f'p={p_val:.3f}', ha='center', va='bottom', color='black', fontsize=10)
     
     plt.tight_layout()
 
