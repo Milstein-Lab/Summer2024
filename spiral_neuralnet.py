@@ -1044,7 +1044,7 @@ def generate_data(K=4, sigma=0.16, N=2000, seed=None, gen=None, display=False, p
     
     return X_test, y_test, X_train, y_train, X_val, y_val, test_loader, train_loader, val_loader
 
-def evaluate_model(base_seed, num_input_units, hidden_units, num_classes, description, lr, debug, num_train_steps, show_plot=False, 
+def evaluate_model(base_seed, num_input_units, hidden_units, num_classes, description, lr, debug, num_train_steps, show_plot=False,
                    png_save_path=None, svg_save_path=None, test=False, plot_example_seed=None, extra_params=None, return_net=False,
                    export=False, status_bar=True):
     
@@ -1181,6 +1181,7 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
         sys.stdout.flush()
 
     model_dict = {description: {seed: results[i][0] for i, seed in enumerate(seeds)}}
+    model_dict['test_acc'] = avg_test_acc
     if export:
         os.makedirs(export_file_path, exist_ok=True)
         model_file_path = os.path.join(export_file_path, f"{description}_models.pkl")
