@@ -16,9 +16,10 @@ This project investigates the following learning rules:
 ### Prerequisites
 
 * Python 3.11
-* Create a virtual environment (optional but recommended):
+* Create and activate a virtual environment (optional but recommended):
 ```
 conda create -n my_env python=3.11
+conda activate my_env
 ```
 * Install the required packages using:
 ```
