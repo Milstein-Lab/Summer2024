@@ -15,7 +15,7 @@ from os import cpu_count
 import click
 import multiprocessing
 from joblib import Parallel, delayed
-from mpi4py import MPI
+# from mpi4py import MPI
 import traceback
 import time
 
@@ -1042,17 +1042,17 @@ def generate_data(K=4, sigma=0.16, N=2000, seed=None, gen=None, display=False, p
     
     return X_test, y_test, X_train, y_train, X_val, y_val, test_loader, train_loader, val_loader
 
-def is_cluster():
-    # Check environment variables commonly set on clusters
-    cluster_vars = ["SLURM_JOB_ID", "PBS_JOBID", "SGE_TASK_ID"]
-    if any(var in os.environ for var in cluster_vars):
-        return True
+# def is_mpi():
+#     # Check environment variables commonly set on clusters
+#     cluster_vars = ["SLURM_JOB_ID", "PBS_JOBID", "SGE_TASK_ID"]
+#     if any(var in os.environ for var in cluster_vars):
+#         return True
     
-    # Check number of available cores
-    if multiprocessing.cpu_count() > 32:
-        return True
+#     # Check number of available cores
+#     if multiprocessing.cpu_count() > 32:
+#         return True
     
-    return False
+#     return False
 
 def evaluate_model(base_seed, num_input_units, hidden_units, num_classes, description, lr, debug, num_train_steps,
                    show_plot=False, png_save_path=None, svg_save_path=None, test=False, plot_example_seed=None,
@@ -1131,33 +1131,23 @@ def evaluate_model(base_seed, num_input_units, hidden_units, num_classes, descri
 def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, num_input_units, hidden_units,
                               num_classes, export, export_file_path, show_plot, png_save_path, svg_save_path,
                               label_dict, debug, num_train_steps, test=True, extra_params=None, verbose=True,
-                              return_net=False, interactive=False, status_bar=True, **kwargs):
+                              return_net=False, interactive=False, status_bar=True, parallel_method=None, **kwargs):
     
     # Determine number of available cores
     if num_cores is None:
-        num_cores = min(cpu_count(), num_seeds)
+        num_cores = min(multiprocessing.cpu_count(), num_seeds)
     else:
         num_cores = min(num_cores, num_seeds)
     
     if show_plot and num_cores > 1:
         example_show_plot = False
-    elif show_plot == False:
+    elif not show_plot:
         example_show_plot = False
     else:
         example_show_plot = True
 
-    comm = MPI.COMM_WORLD
-    rank = comm.Get_rank()
-    size = comm.Get_size()
-
     # List of base seeds
     seeds = [base_seed + seed_offset * 10 for seed_offset in range(num_seeds)]
-    seeds_per_proc = len(seeds) // size
-    remainder = len(seeds) % size
-
-    start = rank * seeds_per_proc + min(rank, remainder)
-    end = start + seeds_per_proc + (1 if rank < remainder else 0)
-    local_seeds = seeds[start:end]
     
     eval_params = {
         'num_input_units': num_input_units,
@@ -1178,63 +1168,90 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
         'status_bar': status_bar
     }
 
-    # if num_cores > 1:
-    #     multiprocessing.set_start_method('spawn', force=True)
-    #     results = Parallel(n_jobs=num_cores, backend='multiprocessing')(delayed(evaluate_model)(seed, **eval_params) for seed in seeds)
+    # # Determine the method for parallel processing
+    # if parallel_method == 'mpi':
+    #     print(f"Running {num_seeds} seeds in parallel with {num_cores} cores with MPI")
+    #     comm = MPI.COMM_WORLD
+    #     rank = comm.Get_rank()
+    #     size = comm.Get_size()
+
+    #     seeds_per_proc = len(seeds) // size
+    #     remainder = len(seeds) % size
+
+    #     start = rank * seeds_per_proc + min(rank, remainder)
+    #     end = start + seeds_per_proc + (1 if rank < remainder else 0)
+    #     local_seeds = seeds[start:end]
+
+    #     # Evaluate model on local seeds (MPI)
+    #     local_results = [evaluate_model(seed, **eval_params) for seed in local_seeds]
+
+    #     # Gather results from all processes
+    #     all_results = comm.gather(local_results, root=0)
+
+    #     if rank == 0:
+    #         # Flatten results
+    #         results = [item for sublist in all_results for item in sublist]
     # else:
-    #     # Run without multiprocessing
-    #     results = [evaluate_model(seed, **eval_params) for seed in seeds]
+    #     if num_seeds > 1:
+    #         print(f"Running {num_seeds} seeds in parallel with {num_cores} cores with joblib")
+    #         # Joblib for multiprocessing
+    #         multiprocessing.set_start_method('spawn', force=True)
+    #         results = Parallel(n_jobs=num_cores, backend='multiprocessing')(
+    #             delayed(evaluate_model)(seed, **eval_params) for seed in seeds)
+    #     else:
+    #         print("Running without multiprocessing")
+    #         # Run without multiprocessing if only one seed
+    #         results = [evaluate_model(seeds[0], **eval_params)]
 
-    # Evaluate model on local seeds
-    local_results = [evaluate_model(seed, **eval_params) for seed in local_seeds]
+    # if parallel_method == 'mpi' and MPI.COMM_WORLD.Get_rank() != 0:
+    #     return None, None
 
-    # Gather results from all processes
-    all_results = comm.gather(local_results, root=0)
-
-    if rank == 0:
-        # Flatten results
-        results = [item for sublist in all_results for item in sublist]
-
-        # Extract and average the metrics 
-        val_accuracies = [result[1] for result in results]
-        val_losses = [result[2] for result in results]
-        test_accuracies = [result[3] for result in results]
-
-        avg_val_acc = np.mean(val_accuracies)
-        avg_val_loss = np.mean(val_losses)
-        avg_test_acc = np.mean(test_accuracies) if test else None
-
-        if num_seeds > 1 and verbose:
-            print(f"Averaged Test Accuracy: {avg_test_acc:.3f}")
-            print(f"Averaged Validation Accuracy: {avg_val_acc:.3f}")
-            print(f"Averaged Validation Loss: {avg_val_loss:.3f}")
-            sys.stdout.flush()
-
-        model_dict = {description: {seed: results[i][0] for i, seed in enumerate(seeds)}}
-        model_dict['test_acc'] = avg_test_acc
-        if export:
-            os.makedirs(export_file_path, exist_ok=True)
-            model_file_path = os.path.join(export_file_path, f"{description}_models.pkl")
-            with open(model_file_path, "wb") as f:
-                pickle.dump(model_dict, f)
-            print(f"Network exported to {model_file_path}")
-
-        if return_net:
-            # Plotting
-            if (show_plot and test) or png_save_path or svg_save_path:
-                idx = 0
-                rep_net = results[0][idx]
-                seed = seeds[idx]
-                plot_title = label_dict[description]
-                rep_net.display_summary(model_dict, title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot)
-                rep_net.plot_params(title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot) 
-
-        if return_net and interactive:
-            return avg_val_acc, model_dict
-        else:
-            return avg_val_acc, None
+    if num_cores > 1:
+        print(f"Running {num_seeds} seeds in parallel with {num_cores} cores with joblib")
+        multiprocessing.set_start_method('spawn', force=True)
+        results = Parallel(n_jobs=num_cores, backend='multiprocessing')(delayed(evaluate_model)(seed, **eval_params) for seed in seeds)
     else:
-        return None, None
+        print("Running without multiprocessing")
+        results = [evaluate_model(seed, **eval_params) for seed in seeds]
+
+    # Extract and average the metrics 
+    val_accuracies = [result[1] for result in results]
+    val_losses = [result[2] for result in results]
+    test_accuracies = [result[3] for result in results]
+
+    avg_val_acc = np.mean(val_accuracies)
+    avg_val_loss = np.mean(val_losses)
+    avg_test_acc = np.mean(test_accuracies) if test else None
+
+    if num_seeds > 1 and verbose:
+        print(f"Averaged Test Accuracy: {avg_test_acc:.3f}")
+        print(f"Averaged Validation Accuracy: {avg_val_acc:.3f}")
+        print(f"Averaged Validation Loss: {avg_val_loss:.3f}")
+        sys.stdout.flush()
+
+    model_dict = {description: {seed: results[i][0] for i, seed in enumerate(seeds)}}
+    model_dict['test_acc'] = avg_test_acc
+    if export:
+        os.makedirs(export_file_path, exist_ok=True)
+        model_file_path = os.path.join(export_file_path, f"{description}_models.pkl")
+        with open(model_file_path, "wb") as f:
+            pickle.dump(model_dict, f)
+        print(f"Network exported to {model_file_path}")
+
+    if return_net:
+        # Plotting
+        if (show_plot and test) or png_save_path or svg_save_path:
+            idx = 0
+            rep_net = results[0][idx]
+            seed = seeds[idx]
+            plot_title = label_dict[description]
+            rep_net.display_summary(model_dict, title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot)
+            rep_net.plot_params(title=plot_title, seed=seed, png_save_path=png_save_path, svg_save_path=svg_save_path, show_plot=show_plot) 
+
+    if return_net and interactive:
+        return avg_val_acc, model_dict
+    else:
+        return avg_val_acc, None
 
 
 @click.command()
@@ -1251,9 +1268,14 @@ def eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, 
 @click.option('--num_cores', type=int, default=None)
 @click.option('--status_bar', type=bool, default=True)
 @click.option('--poster', is_flag=True)
+@click.option('--parallel_method', type=str, default='auto')
 def main(description, show_plot, save_plot, interactive, export, export_file_path, seed, debug, num_train_steps, num_seeds,
-         num_cores, status_bar, poster):
+         num_cores, status_bar, poster, parallel_method):
     start_time = time.time()
+
+    # # Auto-select parallel method
+    # if parallel_method == 'auto':
+    #     parallel_method = 'mpi' if is_mpi() else 'joblib'
 
     base_seed = seed
 
@@ -1370,7 +1392,7 @@ def main(description, show_plot, save_plot, interactive, export, export_file_pat
     mean_val_accuracy, model_dict = eval_model_multiple_seeds(description, lr, base_seed, num_seeds, num_cores, num_input_units, hidden_units, num_classes,
                                                   export, export_file_path, show_plot, png_save_path, svg_save_path,
                                                   label_dict, debug, num_train_steps, test=True, extra_params=extra_params,
-                                                  return_net=True, interactive=interactive, status_bar=status_bar)
+                                                  return_net=True, interactive=interactive, status_bar=status_bar, parallel_method=parallel_method)
 
     end_time = time.time()
     total_time = end_time - start_time
